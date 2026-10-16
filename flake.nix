@@ -23,11 +23,11 @@
             golangci-lint
             jekyll
             nodejs_22
-            nodePackages.prettier
+            prettier
             protobuf
             protoc-gen-go
             ruby
-          ] ++ (if stdenv.isLinux then [
+          ] ++ (if stdenv.hostPlatform.isLinux then [
             chromium
           ] else []);
         };

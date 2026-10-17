@@ -54,6 +54,7 @@ message Classification {
   optional string releaseGroup = 11;
   optional string contentId = 12;
   optional string contentSource = 13;
+  repeated string tags = 14;
 
   enum ContentType {
     unknown = 0;

@@ -4,6 +4,7 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/classifier/classification"
 	"github.com/bitmagnet-io/bitmagnet/internal/model"
 	"github.com/bitmagnet-io/bitmagnet/internal/slice"
+	"golang.org/x/exp/maps"
 )
 
 func NewTorrent(t model.Torrent) *Torrent {
@@ -171,6 +172,7 @@ func NewClassification(c classification.Result) *Classification {
 		ReleaseGroup:    releaseGroup,
 		ContentId:       contentID,
 		ContentSource:   contentSource,
+		Tags:            maps.Keys(c.Tags),
 	}
 }
 

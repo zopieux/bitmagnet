@@ -86,6 +86,15 @@ And the following action will delete the current torrent being classified (retur
 delete
 ```
 
+The `webhook` action calls an external HTTP endpoint with the torrent metadata (as JSON via HTTP POST) to determine classification verdicts or pre-filter torrents:
+
+```yaml
+webhook:
+  url: http://localhost:8080/classify
+  timeout: 2s
+  on_error: ignore # "retry" (default), "ignore", or "delete"
+```
+
 These actions aren't much use on their own - we'd want to check some conditions are satisfied before setting a content type or deleting a torrent, and for this we'd use the `if_else` action. For example, the following action will set the content type to `audiobook` if the torrent name contains audiobook-related keywords, and will otherwise return an `unmatched` error:
 
 ```yaml
@@ -380,3 +389,79 @@ workflows:
 ```
 
 To specify that the custom workflow should be used, remember to specify the `classifier.workflow` configuration option, e.g. `CLASSIFIER_WORKFLOW=custom bitmagnet worker run --all`.
+
+### External classification and tagging with `webhook`
+
+You can chain an external HTTP service as a pre-filter or tagger before the built-in `default` workflow runs. This is particularly useful if you want an external program or ML model to inspect torrent metadata and either return verdicts directly or attach tags (such as language, content warnings, or model predictions), allowing bitmagnet's CEL-based workflow DSL to decide what gets kept or deleted.
+
+```yaml
+workflows:
+  custom:
+    # 1. Call external tagging service (HTTP or Unix domain socket):
+    - webhook:
+        url: "http://localhost:8080/classify" # or "unix:///var/run/classifier.sock:/classify"
+        timeout: "2s"
+        # "retry" (default): re-queues up to max_retries before marking job failed
+        # "ignore": fail-open (continues down pipeline on timeout or server error)
+        # "delete": fail-closed (deletes torrent on timeout or server error)
+        on_error: ignore
+        headers:
+          Authorization: "Bearer my-secret-token"
+
+    # 2. Use bitmagnet DSL to delete torrents matching specific tags:
+    - if_else:
+        condition: "'nsfw:model' in result.tags || result.tags.exists(t, t.startsWith('lang:'))"
+        if_action: delete
+
+    # 3. Continue with built-in classification for kept torrents:
+    - run_workflow: default
+```
+
+#### Webhook Request Payload
+
+bitmagnet sends the torrent metadata as JSON (`POST`) to your endpoint:
+
+```json
+{
+  "infoHash": "0123456789abcdef...",
+  "name": "Ubuntu.24.04.Desktop.iso",
+  "size": 6012954624,
+  "files": [
+    {
+      "path": "ubuntu-24.04-desktop-amd64.iso",
+      "size": 6012954624,
+      "extension": "iso"
+    }
+  ]
+}
+```
+
+#### Webhook Response Verdict
+
+Your external service responds with JSON:
+
+- **To return tags and let bitmagnet DSL decide**:
+  The service returns `"action": "keep"` along with `tags`. The tags are attached to `result.tags` (available as a string list in CEL expressions):
+  ```json
+  {
+    "action": "keep",
+    "tags": ["nsfw:model", "lang:chinese"]
+  }
+  ```
+
+- **To delete the torrent immediately**:
+  ```json
+  {
+    "action": "delete"
+  }
+  ```
+
+- **To return an unmatched signal** (useful when nesting `webhook` inside a `find_match` action):
+  ```json
+  {
+    "action": "unmatched"
+  }
+  ```
+
+Enable the workflow by specifying `CLASSIFIER_WORKFLOW=custom` (or `classifier.workflow: custom` in `config.yml`).
+

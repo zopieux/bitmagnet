@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/database/dao"
-	"github.com/bitmagnet-io/bitmagnet/internal/database/exclause"
 	"github.com/bitmagnet-io/bitmagnet/internal/database/fts"
 	"github.com/bitmagnet-io/bitmagnet/internal/maps"
 	"github.com/bitmagnet-io/bitmagnet/internal/model"
@@ -58,28 +57,14 @@ func GenericQuery[T interface{}](
 
 	gq.ctx = builder.createContext(_ctx)
 	gq.builder = builder
-	wg := sync.WaitGroup{}
-	wg.Add(3)
+	gq.doItems()
+	gq.doCount()
 
-	//nolint:contextcheck
-	go func() {
-		defer wg.Done()
-		gq.doItems()
-	}()
-	go func() {
-		defer wg.Done()
-		gq.doCount()
-	}()
-	go func() {
-		defer wg.Done()
-
-		if aggs, aggErr := gq.builder.calculateAggregations(gq.ctx); aggErr != nil {
-			gq.addError(aggErr)
-		} else {
-			gq.result.Aggregations = aggs
-		}
-	}()
-	wg.Wait()
+	if aggs, aggErr := gq.builder.calculateAggregations(gq.ctx); aggErr != nil {
+		gq.addError(aggErr)
+	} else {
+		gq.result.Aggregations = aggs
+	}
 
 	return gq.result, errors.Join(gq.errs...)
 }
@@ -113,24 +98,6 @@ func (gq *genericQuery[_]) addError(err error) {
 	gq.errs = append(gq.errs, err)
 }
 
-func (gq *genericQuery[_]) checkExists(ctx context.Context) (bool, error) {
-	sq, sqErr := gq.newSubQuery(ctx, false)
-	if sqErr != nil {
-		return false, sqErr
-	}
-
-	sql := dao.ToSQL(sq.UnderlyingDB().Select("*"))
-	row := sq.UnderlyingDB().Raw("SELECT EXISTS(" + sql + ")")
-
-	var exists bool
-
-	if existsErr := row.Scan(&exists).Error; existsErr != nil {
-		return false, existsErr
-	}
-
-	return exists, nil
-}
-
 func (gq *genericQuery[_]) doCount() {
 	if gq.builder.withTotalCount() {
 		sq, sqErr := gq.newSubQuery(gq.ctx, false)
@@ -139,127 +106,33 @@ func (gq *genericQuery[_]) doCount() {
 			return
 		}
 
-		if countResult, countErr := dao.BudgetedCount(
-			sq.UnderlyingDB(), gq.builder.AggregationBudget(),
-		); countErr != nil {
+		var count int64
+		if countErr := sq.UnderlyingDB().Count(&count).Error; countErr != nil {
 			gq.addError(countErr)
 		} else {
-			gq.result.TotalCount = uint(countResult.Count)
-			gq.result.TotalCountIsEstimate = countResult.BudgetExceeded
+			gq.result.TotalCount = uint(count)
+			gq.result.TotalCountIsEstimate = false
 		}
 	}
 }
 
 // doItems gets the items from the database and sets it to the result
-//
-// For querying the items, we have 2 possible strategies to try:
-// - the default strategy is always tried, and is usually the most performant
-// - for certain searches where items are filtered to a small number of results, and ordered with a limit,
-// the default strategy can be very slow, so we try a CTE strategy, with order and limit on a materialized view of
-// the complete results, and we put it in a race with the default strategy.
-// The CTE strategy uses a stopping point, and will only return items where there are fewer than the stopping point.
 func (gq *genericQuery[T]) doItems() {
 	if !gq.builder.hasZeroLimit() || gq.builder.needsNextPage() {
+		sq, sqErr := gq.newSubQuery(gq.ctx, true)
+		if sqErr != nil {
+			gq.addError(sqErr)
+			return
+		}
+
+		if postErr := gq.builder.applyPost(sq.UnderlyingDB()); postErr != nil {
+			gq.addError(postErr)
+			return
+		}
+
 		var finalItems []T
-
-		doneChan := make(chan error)
-
-		raceCtx, raceCancel := context.WithCancel(gq.ctx)
-		defer raceCancel()
-
-		mtx := sync.Mutex{}
-		done := func(items []T, err error) {
-			mtx.Lock()
-			defer mtx.Unlock()
-
-			if finalItems != nil || raceCtx.Err() != nil {
-				return
-			}
-
-			if err == nil {
-				// copy items slice to avoid modifying cached results
-				finalItems = append([]T{}, items...)
-			}
-			doneChan <- err
-		}
-		// start the default strategy
-		go func() {
-			sq, sqErr := gq.newSubQuery(raceCtx, true)
-			if sqErr != nil {
-				done(nil, sqErr)
-				return
-			}
-
-			if postErr := gq.builder.applyPost(sq.UnderlyingDB()); postErr != nil {
-				done(nil, postErr)
-				return
-			}
-
-			var items []T
-			if txErr := sq.UnderlyingDB().Find(&items).Error; txErr != nil {
-				done(nil, txErr)
-				return
-			}
-
-			done(items, nil)
-		}()
-
-		if gq.builder.shouldTryCteStrategy() {
-			// start the CTE strategy
-			go func() {
-				stoppingPoint := 50_000
-
-				sqCte, sqCteErr := gq.newSubQuery(raceCtx, true)
-				if sqCteErr != nil {
-					done(nil, sqCteErr)
-					return
-				}
-
-				sql := dao.ToSQL(sqCte.UnderlyingDB()) + " LIMIT " + strconv.Itoa(stoppingPoint)
-
-				cte := gq.factory(raceCtx, gq.daoQ).UnderlyingDB().Clauses(
-					exclause.NewWith("cte", sql, true),
-					exclause.NewWith("cte_count", "SELECT COUNT(*) AS total_count FROM cte", true),
-				).Table("cte").Where("(SELECT MAX(total_count) FROM cte_count) < " + strconv.Itoa(stoppingPoint))
-				if postErr := gq.builder.applyPost(cte); postErr != nil {
-					done(nil, postErr)
-					return
-				}
-
-				var items []T
-				if scanErr := cte.Scan(&items).Error; scanErr != nil {
-					done(nil, scanErr)
-					return
-				}
-
-				if len(items) == 0 {
-					// if no items are returned, we need a further check
-					// to distinguish between stopping point reached and no matching items
-					exists, existsErr := gq.checkExists(raceCtx)
-					if existsErr != nil {
-						done(nil, existsErr)
-						return
-					}
-
-					if exists {
-						// the stopping point was reached, so return without calling `done`
-						return
-					}
-				}
-
-				done(items, nil)
-			}()
-		}
-		select {
-		case doneErr := <-doneChan:
-			raceCancel()
-
-			if doneErr != nil {
-				gq.addError(doneErr)
-				return
-			}
-		case <-raceCtx.Done():
-			gq.addError(raceCtx.Err())
+		if txErr := sq.UnderlyingDB().Find(&finalItems).Error; txErr != nil {
+			gq.addError(txErr)
 			return
 		}
 
@@ -392,7 +265,6 @@ type OptionBuilder interface {
 	needsNextPage() bool
 	hasNextPage(nItems int) bool
 	withCurrentFacet(string) OptionBuilder
-	shouldTryCteStrategy() bool
 	createContext(context.Context) context.Context
 }
 
@@ -812,20 +684,4 @@ func (b optionBuilder) applyCallbacks(ctx context.Context, results any) error {
 	wg.Wait()
 
 	return errors.Join(errs...)
-}
-
-func (b optionBuilder) shouldTryCteStrategy() bool {
-	if !b.limit.Valid || len(b.orderBy) == 0 {
-		return false
-	}
-
-	for _, f := range b.facets {
-		if f.TriggersCte() && len(f.Filter()) > 0 {
-			return true
-		}
-	}
-
-	return b.ftsQuery != "" && (len(b.orderBy) != 1 ||
-		b.orderBy[0].Column.Name != QueryStringRankField ||
-		!b.orderBy[0].Desc)
 }

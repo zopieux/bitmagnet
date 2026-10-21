@@ -21,6 +21,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/bitmagnet-io/bitmagnet/internal/database/sqlite"
 	migrationssql "github.com/bitmagnet-io/bitmagnet/migrations"
 	_ "github.com/glebarez/go-sqlite"
 	"github.com/google/uuid"
@@ -79,7 +80,7 @@ func main() {
 		*dsn = "bitmagnet.db"
 	}
 
-	db, err := sql.Open("sqlite", *dsn+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(OFF)&_pragma=cache_size(-64000)&_pragma=temp_store(MEMORY)")
+	db, err := sql.Open("sqlite", sqlite.BuildDSN(*dsn))
 	if err != nil {
 		fatal(err)
 	}

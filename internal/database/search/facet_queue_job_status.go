@@ -33,6 +33,10 @@ func (queueJobStatusFacet) Values(query.FacetContext) (map[string]string, error)
 	return values, nil
 }
 
+func (queueJobStatusFacet) GroupColumn(ctx query.DBContext) (field.Field, error) {
+	return field.Field(ctx.Query().QueueJob.Status), nil
+}
+
 func (queueJobStatusFacet) Criteria(filter query.FacetFilter) []query.Criteria {
 	values := filter.Values()
 	if len(values) == 0 {

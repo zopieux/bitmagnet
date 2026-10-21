@@ -3,8 +3,10 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/lazy"
@@ -12,6 +14,32 @@ import (
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
+
+var defaultPragmas = []string{
+	"foreign_keys(1)",
+	"journal_mode(WAL)",
+	"busy_timeout(5000)",
+	"synchronous(OFF)",
+	"cache_size(-64000)",
+	"mmap_size(536870912)",
+	"temp_store(MEMORY)",
+	"wal_autocheckpoint(1000)",
+	"auto_vacuum(INCREMENTAL)",
+}
+
+func BuildDSN(dbPath string) string {
+	basePath, queryStr, hasQuery := strings.Cut(dbPath, "?")
+	q := url.Values{}
+	if hasQuery {
+		if parsed, err := url.ParseQuery(queryStr); err == nil {
+			q = parsed
+		}
+	}
+	for _, p := range defaultPragmas {
+		q.Add("_pragma", p)
+	}
+	return basePath + "?" + q.Encode()
+}
 
 type Params struct {
 	fx.In
@@ -44,7 +72,7 @@ func New(p Params) (Result, error) {
 				_ = os.MkdirAll(dir, 0755)
 			}
 		}
-		db, err := sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(OFF)&_pragma=cache_size(-64000)&_pragma=temp_store(MEMORY)&_pragma=auto_vacuum(INCREMENTAL)")
+		db, err := sql.Open("sqlite", BuildDSN(dbPath))
 		if err != nil {
 			return nil, err
 		}

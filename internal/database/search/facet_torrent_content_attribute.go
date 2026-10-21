@@ -27,6 +27,10 @@ func (torrentContentAttributeFacet[T]) Values(query.FacetContext) (map[string]st
 	return map[string]string{}, nil
 }
 
+func (f torrentContentAttributeFacet[T]) GroupColumn(ctx query.DBContext) (field.Field, error) {
+	return f.field(ctx.Query()), nil
+}
+
 func (f torrentContentAttributeFacet[T]) Criteria(filter query.FacetFilter) []query.Criteria {
 	return []query.Criteria{
 		query.GenCriteria(func(ctx query.DBContext) (query.Criteria, error) {

@@ -2,6 +2,7 @@ package search
 
 import (
 	"github.com/bitmagnet-io/bitmagnet/internal/database/query"
+	"gorm.io/gen/field"
 )
 
 const QueueJobQueueFacetKey = "queue"
@@ -31,6 +32,10 @@ func (queueJobQueueFacet) Values(query.FacetContext) (map[string]string, error) 
 	}
 
 	return values, nil
+}
+
+func (queueJobQueueFacet) GroupColumn(ctx query.DBContext) (field.Field, error) {
+	return field.Field(ctx.Query().QueueJob.Queue), nil
 }
 
 func (queueJobQueueFacet) Criteria(filter query.FacetFilter) []query.Criteria {

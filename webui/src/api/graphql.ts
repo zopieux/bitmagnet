@@ -118,7 +118,6 @@ export async function searchTorrents(options: SearchOptions): Promise<TorrentSea
   const facets: Record<string, any> = {
     contentType: { aggregate: true },
     torrentTag: { aggregate: true },
-    torrentFileType: { aggregate: true },
   };
 
   if (options.contentTypes && options.contentTypes.length > 0) {
@@ -176,11 +175,6 @@ export async function searchTorrents(options: SearchOptions): Promise<TorrentSea
               count
             }
             torrentTag {
-              value
-              label
-              count
-            }
-            torrentFileType {
               value
               label
               count

@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"sync"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/database/dao"
 	"github.com/bitmagnet-io/bitmagnet/internal/maps"
 	"github.com/bitmagnet-io/bitmagnet/internal/model"
+	"gorm.io/gen/field"
 )
 
 type FacetConfig interface {
@@ -26,6 +26,11 @@ type Facet interface {
 	FacetConfig
 	Values(ctx FacetContext) (map[string]string, error)
 	Criteria(filter FacetFilter) []Criteria
+}
+
+type GroupedFacet interface {
+	Facet
+	GroupColumn(ctx DBContext) (field.Field, error)
 }
 
 type FacetFilter map[string]struct{}
@@ -240,103 +245,134 @@ func withCurrentFacet(facetKey string) Option {
 
 func (b optionBuilder) calculateAggregations(ctx context.Context) (Aggregations, error) {
 	aggregations := make(Aggregations, len(b.facets))
-	wgOuter := sync.WaitGroup{}
-	wgOuter.Add(len(b.facets))
-
-	mtx := sync.Mutex{}
-
 	var errs []error
 
-	addErr := func(err error) {
-		mtx.Lock()
-		defer mtx.Unlock()
-
-		errs = append(errs, err)
-	}
-	addAggregation := func(key string, aggregation AggregationGroup) {
-		mtx.Lock()
-		defer mtx.Unlock()
-
-		aggregations[key] = aggregation
-	}
-
 	for _, facet := range b.facets {
-		go (func(facet Facet) {
-			defer wgOuter.Done()
-			if !facet.IsAggregated() {
-				return
+		if !facet.IsAggregated() {
+			continue
+		}
+		values, valuesErr := facet.Values(facetContext{
+			optionBuilder: b,
+			ctx:           ctx,
+		})
+		if valuesErr != nil {
+			errs = append(errs, fmt.Errorf("failed to get values for key '%s': %w",
+				facet.Key(),
+				valuesErr))
+			continue
+		}
+		filter := facet.Filter()
+		items := make(AggregationItems, len(values))
+
+		if groupedFacet, ok := facet.(GroupedFacet); ok {
+			fld, colErr := groupedFacet.GroupColumn(b)
+			if colErr != nil {
+				errs = append(errs, fmt.Errorf("failed to get group column for key '%s': %w", facet.Key(), colErr))
+				continue
 			}
-			values, valuesErr := facet.Values(facetContext{
-				optionBuilder: b,
-				ctx:           ctx,
-			})
-			if valuesErr != nil {
-				addErr(fmt.Errorf("failed to get values for key '%s': %w",
-					facet.Key(),
-					valuesErr))
-				return
+			aggBuilder, aggBuilderErr := Options(
+				facet.AggregationOption,
+				withCurrentFacet(facet.Key()),
+			)(b)
+			if aggBuilderErr != nil {
+				errs = append(errs, fmt.Errorf("failed to create aggregation option for key '%s': %w", facet.Key(), aggBuilderErr))
+				continue
 			}
-			filter := facet.Filter()
-			items := make(AggregationItems, len(values))
-			addItem := func(key string, item AggregationItem) {
-				mtx.Lock()
-				defer mtx.Unlock()
-				items[key] = item
+			q := aggBuilder.NewSubQuery(ctx)
+			if preErr := aggBuilder.applyPre(q, false); preErr != nil {
+				errs = append(errs, fmt.Errorf("failed to apply pre for key '%s': %w", facet.Key(), preErr))
+				continue
 			}
-			wgInner := sync.WaitGroup{}
-			wgInner.Add(len(values))
-			for key, label := range values {
-				go func(key, label string) {
-					defer wgInner.Done()
-					criterias := facet.Criteria(FacetFilter{key: struct{}{}})
-					var criteria Criteria
-					switch facet.Logic() {
-					case model.FacetLogicAnd:
-						criteria = AndCriteria{criterias}
-					case model.FacetLogicOr:
-						criteria = OrCriteria{criterias}
-					}
-					aggBuilder, aggBuilderErr := Options(
-						facet.AggregationOption,
-						withCurrentFacet(facet.Key()),
-						Where(criteria),
-					)(b)
-					if aggBuilderErr != nil {
-						addErr(
-							fmt.Errorf(
-								"failed to create aggregation option for key '%s': %w", facet.Key(), aggBuilderErr),
-						)
-						return
-					}
-					q := aggBuilder.NewSubQuery(ctx)
-					if preErr := aggBuilder.applyPre(q, false); preErr != nil {
-						addErr(fmt.Errorf("failed to apply pre for key '%s': %w", facet.Key(), preErr))
-						return
-					}
-					countResult, countErr := dao.BudgetedCount(q.UnderlyingDB(), b.aggregationBudget)
-					if countErr != nil {
-						addErr(fmt.Errorf("failed to get count for key '%s': %w", facet.Key(), countErr))
-						return
-					}
-					if countResult.Count > 0 || countResult.BudgetExceeded || filter.HasKey(key) {
-						addItem(key, AggregationItem{
-							Label:      label,
-							Count:      uint(countResult.Count),
-							IsEstimate: countResult.BudgetExceeded,
-						})
-					}
-				}(key, label)
+			colExpr := string(fld.BuildColumn(q.UnderlyingDB().Statement, field.WithTable))
+			type groupCount struct {
+				Val   *string `gorm:"column:val"`
+				Count int64   `gorm:"column:count"`
 			}
-			wgInner.Wait()
-			addAggregation(facet.Key(), AggregationGroup{
+			var rows []groupCount
+			if err := q.UnderlyingDB().
+				Select(colExpr + " AS val, count(*) AS count").
+				Group(colExpr).
+				Find(&rows).Error; err != nil {
+				errs = append(errs, fmt.Errorf("failed to execute grouped aggregation for key '%s': %w", facet.Key(), err))
+				continue
+			}
+			groupedCounts := make(map[string]int64, len(rows))
+			for _, r := range rows {
+				if r.Val == nil {
+					groupedCounts["null"] = r.Count
+				} else {
+					groupedCounts[*r.Val] = r.Count
+				}
+			}
+			for key, count := range groupedCounts {
+				if count > 0 || filter.HasKey(key) {
+					if label, ok := values[key]; ok {
+						items[key] = AggregationItem{
+							Label: label,
+							Count: uint(count),
+						}
+					}
+				}
+			}
+			for key := range filter {
+				if _, ok := items[key]; !ok {
+					if label, ok := values[key]; ok {
+						items[key] = AggregationItem{
+							Label: label,
+							Count: 0,
+						}
+					}
+				}
+			}
+			aggregations[facet.Key()] = AggregationGroup{
 				Label: facet.Label(),
 				Logic: facet.Logic(),
 				Items: items,
-			})
-		})(facet)
-	}
+			}
+			continue
+		}
 
-	wgOuter.Wait()
+		for key, label := range values {
+			criterias := facet.Criteria(FacetFilter{key: struct{}{}})
+			var criteria Criteria
+			switch facet.Logic() {
+			case model.FacetLogicAnd:
+				criteria = AndCriteria{criterias}
+			case model.FacetLogicOr:
+				criteria = OrCriteria{criterias}
+			}
+			aggBuilder, aggBuilderErr := Options(
+				facet.AggregationOption,
+				withCurrentFacet(facet.Key()),
+				Where(criteria),
+			)(b)
+			if aggBuilderErr != nil {
+				errs = append(errs, fmt.Errorf("failed to create aggregation option for key '%s': %w", facet.Key(), aggBuilderErr))
+				continue
+			}
+			q := aggBuilder.NewSubQuery(ctx)
+			if preErr := aggBuilder.applyPre(q, false); preErr != nil {
+				errs = append(errs, fmt.Errorf("failed to apply pre for key '%s': %w", facet.Key(), preErr))
+				continue
+			}
+			var count int64
+			if countErr := q.UnderlyingDB().Count(&count).Error; countErr != nil {
+				errs = append(errs, fmt.Errorf("failed to get count for key '%s': %w", facet.Key(), countErr))
+				continue
+			}
+			if count > 0 || filter.HasKey(key) {
+				items[key] = AggregationItem{
+					Label: label,
+					Count: uint(count),
+				}
+			}
+		}
+		aggregations[facet.Key()] = AggregationGroup{
+			Label: facet.Label(),
+			Logic: facet.Logic(),
+			Items: items,
+		}
+	}
 
 	return aggregations, errors.Join(errs...)
 }

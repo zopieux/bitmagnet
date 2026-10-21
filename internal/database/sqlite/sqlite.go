@@ -23,20 +23,32 @@ var defaultPragmas = []string{
 	"cache_size(-64000)",
 	"mmap_size(536870912)",
 	"temp_store(MEMORY)",
-	"wal_autocheckpoint(1000)",
+	"wal_autocheckpoint(10000)",
 	"auto_vacuum(INCREMENTAL)",
+}
+
+func pragmaName(p string) string {
+	name, _, _ := strings.Cut(p, "(")
+	name, _, _ = strings.Cut(name, "=")
+	return strings.TrimSpace(strings.ToLower(name))
 }
 
 func BuildDSN(dbPath string) string {
 	basePath, queryStr, hasQuery := strings.Cut(dbPath, "?")
 	q := url.Values{}
+	userPragmas := make(map[string]struct{})
 	if hasQuery {
 		if parsed, err := url.ParseQuery(queryStr); err == nil {
 			q = parsed
+			for _, p := range q["_pragma"] {
+				userPragmas[pragmaName(p)] = struct{}{}
+			}
 		}
 	}
 	for _, p := range defaultPragmas {
-		q.Add("_pragma", p)
+		if _, exists := userPragmas[pragmaName(p)]; !exists {
+			q.Add("_pragma", p)
+		}
 	}
 	return basePath + "?" + q.Encode()
 }

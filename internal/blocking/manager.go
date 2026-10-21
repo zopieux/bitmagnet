@@ -35,7 +35,13 @@ func (m *manager) Filter(ctx context.Context, hashes []protocol.ID) ([]protocol.
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	if m.filter == nil || m.shouldFlush() {
+	if m.filter == nil {
+		if err := m.loadFilter(ctx); err != nil {
+			return nil, err
+		}
+	}
+
+	if m.shouldFlush() {
 		if flushErr := m.flush(ctx); flushErr != nil {
 			return nil, flushErr
 		}
@@ -92,7 +98,40 @@ const blockedTorrentsBloomFilterKey = "blocked_torrents"
 // the SQLite variable limit.
 const deleteBatchSize = 500
 
+func (m *manager) loadFilter(ctx context.Context) error {
+	var data []byte
+
+	err := m.db.QueryRowContext(ctx,
+		"SELECT data FROM bloom_filters WHERE key = ?",
+		blockedTorrentsBloomFilterKey,
+	).Scan(&data)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("failed to read bloom filter: %w", err)
+	}
+
+	bf := bloom.NewDefaultStableBloomFilter()
+	if len(data) > 0 {
+		if err := bf.GobDecode(data); err != nil {
+			return fmt.Errorf("failed to decode bloom filter: %w", err)
+		}
+	}
+
+	m.filter = bf
+	m.lastFlushedAt = time.Now()
+	return nil
+}
+
 func (m *manager) flush(ctx context.Context) error {
+	if len(m.buffer) == 0 {
+		return nil
+	}
+
+	if m.filter == nil {
+		if err := m.loadFilter(ctx); err != nil {
+			return err
+		}
+	}
+
 	hashes := slices.Collect(maps.Keys(m.buffer))
 
 	tx, err := m.db.BeginTx(ctx, nil)
@@ -121,29 +160,11 @@ func (m *manager) flush(ctx context.Context) error {
 		}
 	}
 
-	bf := bloom.NewDefaultStableBloomFilter()
-
-	var data []byte
-
-	err = tx.QueryRowContext(ctx,
-		"SELECT data FROM bloom_filters WHERE key = ?",
-		blockedTorrentsBloomFilterKey,
-	).Scan(&data)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("failed to read bloom filter: %w", err)
-	}
-
-	if len(data) > 0 {
-		if err := bf.GobDecode(data); err != nil {
-			return fmt.Errorf("failed to decode bloom filter: %w", err)
-		}
-	}
-
 	for _, hash := range hashes {
-		bf.Add(hash[:])
+		m.filter.Add(hash[:])
 	}
 
-	encoded, err := bf.GobEncode()
+	encoded, err := m.filter.GobEncode()
 	if err != nil {
 		return fmt.Errorf("failed to encode bloom filter: %w", err)
 	}
@@ -163,12 +184,11 @@ func (m *manager) flush(ctx context.Context) error {
 	}
 
 	m.buffer = make(map[protocol.ID]struct{})
-	m.filter = bf
 	m.lastFlushedAt = time.Now()
 
 	return nil
 }
 
 func (m *manager) shouldFlush() bool {
-	return len(m.buffer) >= m.maxBufferSize || time.Since(m.lastFlushedAt) >= m.maxFlushWait
+	return len(m.buffer) > 0 && (len(m.buffer) >= m.maxBufferSize || time.Since(m.lastFlushedAt) >= m.maxFlushWait)
 }

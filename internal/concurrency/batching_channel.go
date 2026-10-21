@@ -15,16 +15,14 @@ type batchingChannel[T any] struct {
 	buffer       []T
 	maxBatchSize int
 	maxWaitTime  time.Duration
-	ticker       *time.Ticker
 }
 
 func NewBatchingChannel[T any](capacity int, maxBatchSize int, maxWaitTime time.Duration) BatchingChannel[T] {
 	ch := &batchingChannel[T]{
 		input:        make(chan T, capacity),
-		output:       make(chan []T, 1),
+		output:       make(chan []T, 2),
 		maxBatchSize: maxBatchSize,
 		maxWaitTime:  maxWaitTime,
-		ticker:       time.NewTicker(maxWaitTime),
 	}
 	go ch.batch()
 
@@ -40,35 +38,58 @@ func (ch *batchingChannel[T]) Out() <-chan []T {
 }
 
 func (ch *batchingChannel[T]) batch() {
-	var next T
-
-	var ok bool
-
 	defer close(ch.output)
+
+	timer := time.NewTimer(ch.maxWaitTime)
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	defer timer.Stop()
+
+	var timerCh <-chan time.Time
 
 	for {
 		select {
-		case next, ok = <-ch.input:
+		case next, ok := <-ch.input:
 			if !ok {
-				break
+				if len(ch.buffer) > 0 {
+					ch.output <- ch.buffer
+					ch.buffer = nil
+				}
+				return
+			}
+
+			if len(ch.buffer) == 0 {
+				timer.Reset(ch.maxWaitTime)
+				timerCh = timer.C
 			}
 
 			ch.buffer = append(ch.buffer, next)
 			if len(ch.buffer) >= ch.maxBatchSize {
-				ch.flush()
+				ch.flush(timer, &timerCh)
 			}
-		case <-ch.ticker.C:
+		case <-timerCh:
+			timerCh = nil
 			if len(ch.buffer) > 0 {
-				ch.flush()
+				ch.flush(timer, &timerCh)
 			}
 		}
 	}
 }
 
-func (ch *batchingChannel[T]) flush() {
-	ch.ticker.Stop()
+func (ch *batchingChannel[T]) flush(timer *time.Timer, timerCh *<-chan time.Time) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	*timerCh = nil
+
 	batch := ch.buffer
 	ch.buffer = nil
-	ch.ticker.Reset(ch.maxWaitTime)
 	ch.output <- batch
 }

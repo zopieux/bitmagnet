@@ -26,7 +26,7 @@ type DiscoveredNodesResult struct {
 func NewDiscoveredNodes(params DiscoveredNodesParams) DiscoveredNodesResult {
 	return DiscoveredNodesResult{
 		DiscoveredNodes: concurrency.NewBatchingChannel[ktable.Node](
-			int(100*params.Config.ScalingFactor), 10, time.Second/100),
+			int(100*params.Config.ScalingFactor), 10, 250*time.Millisecond),
 	}
 }
 

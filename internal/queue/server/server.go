@@ -113,27 +113,59 @@ type serverHandler struct {
 }
 
 func (h *serverHandler) start(ctx context.Context) {
-	checkTicker := time.NewTicker(h.checkInterval)
+	baseInterval := h.checkInterval
+	if baseInterval <= 0 {
+		baseInterval = 10 * time.Second
+	}
+	currentInterval := baseInterval
+	maxInterval := baseInterval * 4
+	if maxInterval < time.Minute {
+		maxInterval = time.Minute
+	}
+
+	timer := time.NewTimer(currentInterval)
+	defer timer.Stop()
+
+	wakeCh := make(chan struct{}, 1)
 
 	for {
+		wokeFromJob := false
 		select {
 		case <-ctx.Done():
 			return
-		case <-checkTicker.C:
-			if semErr := h.sem.Acquire(ctx, 1); semErr != nil {
-				return
-			}
-
-			go func() {
-				defer h.sem.Release(1)
-				jobID, _, err := h.handleJob(ctx)
-				// if a job was found, we should check straight away for another job,
-				// otherwise we wait for the check interval
-				if err == nil && jobID != "" {
-					checkTicker.Reset(h.checkInterval)
+		case <-wakeCh:
+			wokeFromJob = true
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
 				}
-			}()
+			}
+		case <-timer.C:
 		}
+
+		if semErr := h.sem.Acquire(ctx, 1); semErr != nil {
+			return
+		}
+
+		go func() {
+			defer h.sem.Release(1)
+			jobID, _, err := h.handleJob(ctx)
+			if err == nil && jobID != "" {
+				// if a job was found, check straight away for another job
+				select {
+				case wakeCh <- struct{}{}:
+				default:
+				}
+			}
+		}()
+
+		if wokeFromJob {
+			currentInterval = baseInterval
+		} else if currentInterval < maxInterval {
+			currentInterval = min(currentInterval*3/2, maxInterval)
+		}
+		timer.Reset(currentInterval)
 	}
 }
 
@@ -149,10 +181,8 @@ func (h *serverHandler) handleJob(
 	// transaction (the handler may do its own DB writes, which would deadlock
 	// with MaxOpenConns(1) if held inside the tx), then the status is updated
 	// in a second short transaction.
-	var job *model.QueueJob
-	err = h.query.Transaction(func(tx *dao.Query) error {
-		var findErr error
-		job, findErr = tx.QueueJob.WithContext(ctx).Where(
+	findJob := func(q *dao.Query) (*model.QueueJob, error) {
+		return q.QueueJob.WithContext(ctx).Where(
 			append(
 				conds,
 				h.query.QueueJob.Queue.Eq(h.Queue),
@@ -167,6 +197,23 @@ func (h *serverHandler) handleJob(
 			h.query.QueueJob.Priority,
 			h.query.QueueJob.RunAfter,
 		).First()
+	}
+
+	// Quick check without a transaction: if no jobs are ready, avoid opening
+	// and committing a transaction (which generates WAL frames on SQLite).
+	if candidate, checkErr := findJob(h.query); checkErr != nil {
+		if errors.Is(checkErr, gorm.ErrRecordNotFound) {
+			return "", false, nil
+		}
+		return "", false, checkErr
+	} else if candidate == nil {
+		return "", false, nil
+	}
+
+	var job *model.QueueJob
+	err = h.query.Transaction(func(tx *dao.Query) error {
+		var findErr error
+		job, findErr = findJob(tx)
 		if findErr != nil {
 			if errors.Is(findErr, gorm.ErrRecordNotFound) {
 				return nil

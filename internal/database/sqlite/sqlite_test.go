@@ -27,7 +27,7 @@ func TestPragmas(t *testing.T) {
 	var walAutocheckpoint int
 	err = db.QueryRow("PRAGMA wal_autocheckpoint").Scan(&walAutocheckpoint)
 	require.NoError(t, err)
-	require.Equal(t, 10000, walAutocheckpoint)
+	require.Equal(t, 25000, walAutocheckpoint)
 
 	var mmapSize int64
 	err = db.QueryRow("PRAGMA mmap_size").Scan(&mmapSize)

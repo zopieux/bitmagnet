@@ -11,6 +11,7 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/model"
 	"github.com/bitmagnet-io/bitmagnet/internal/queue"
 	"github.com/bitmagnet-io/bitmagnet/internal/queue/handler"
+	"github.com/bitmagnet-io/bitmagnet/internal/queue/prometheus"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 	"gorm.io/gen"
@@ -24,6 +25,7 @@ type server struct {
 	gcInterval    time.Duration
 	checkInterval time.Duration
 	logger        *zap.SugaredLogger
+	metrics       prometheus.QueueMetrics
 }
 
 func (s *server) Start(ctx context.Context) (err error) {
@@ -42,6 +44,7 @@ func (s *server) Start(ctx context.Context) (err error) {
 			query:         s.query,
 			checkInterval: s.checkInterval,
 			logger:        s.logger.With("queue", h.Queue),
+			metrics:       s.metrics,
 		}
 
 		go sh.start(ctx)
@@ -110,6 +113,7 @@ type serverHandler struct {
 	query         *dao.Query
 	checkInterval time.Duration
 	logger        *zap.SugaredLogger
+	metrics       prometheus.QueueMetrics
 }
 
 func (h *serverHandler) start(ctx context.Context) {
@@ -266,6 +270,10 @@ func (h *serverHandler) handleJob(
 	} else {
 		job.Status = model.QueueJobStatusProcessed
 		processed = true
+	}
+
+	if h.metrics != nil {
+		h.metrics.Inc(h.Queue, job.Status)
 	}
 
 	err = h.query.Transaction(func(tx *dao.Query) error {

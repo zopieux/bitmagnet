@@ -8,6 +8,7 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/database/sqlite"
 	"github.com/bitmagnet-io/bitmagnet/internal/lazy"
 	"github.com/bitmagnet-io/bitmagnet/internal/queue/handler"
+	"github.com/bitmagnet-io/bitmagnet/internal/queue/prometheus"
 	"github.com/bitmagnet-io/bitmagnet/internal/worker"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -18,8 +19,9 @@ type Params struct {
 	Query lazy.Lazy[*dao.Query]
 	// PgxPool  lazy.Lazy[*pgxpool.Pool]
 	Handlers []lazy.Lazy[handler.Handler] `group:"queue_handlers"`
-	Logger   *zap.SugaredLogger
+	Logger       *zap.SugaredLogger
 	SqliteConfig sqlite.Config
+	Metrics      prometheus.QueueMetrics `optional:"true"`
 }
 
 type Result struct {
@@ -60,6 +62,7 @@ func New(p Params) Result {
 						// Poll at half the DB write interval to avoid frequent small disk I/O.
 						checkInterval: p.SqliteConfig.WriteInterval / 2,
 						logger:        p.Logger.Named("queue"),
+						metrics:       p.Metrics,
 					}
 					// todo: Fix!
 					//nolint:contextcheck

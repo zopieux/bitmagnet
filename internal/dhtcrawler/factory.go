@@ -15,6 +15,7 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht/ktable"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo/banning"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo/metainforequester"
+	queueprometheus "github.com/bitmagnet-io/bitmagnet/internal/queue/prometheus"
 	"github.com/bitmagnet-io/bitmagnet/internal/worker"
 	"github.com/prometheus/client_golang/prometheus"
 	boom "github.com/tylertreat/BoomFilters"
@@ -33,8 +34,9 @@ type Params struct {
 	Search            lazy.Lazy[search.Search]
 	Dao               lazy.Lazy[*dao.Query]
 	BlockingManager   lazy.Lazy[blocking.Manager]
-	DiscoveredNodes   concurrency.BatchingChannel[ktable.Node] `name:"dht_discovered_nodes"`
-	Logger            *zap.SugaredLogger
+	DiscoveredNodes concurrency.BatchingChannel[ktable.Node] `name:"dht_discovered_nodes"`
+	Logger          *zap.SugaredLogger
+	QueueMetrics    queueprometheus.QueueMetrics `optional:"true"`
 }
 
 type Result struct {
@@ -130,6 +132,7 @@ func New(params Params) Result {
 						soughtNodeID:    &concurrency.AtomicValue[protocol.ID]{},
 						stopped:         make(chan struct{}),
 						persistedTotal:  persistedTotal,
+						queueMetrics:    params.QueueMetrics,
 						logger:          params.Logger.Named("dht_crawler"),
 					}
 					c.soughtNodeID.Set(protocol.RandomNodeID())

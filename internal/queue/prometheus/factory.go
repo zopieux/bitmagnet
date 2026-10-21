@@ -1,29 +1,27 @@
 package prometheus
 
 import (
-	"github.com/bitmagnet-io/bitmagnet/internal/database/dao"
-	"github.com/bitmagnet-io/bitmagnet/internal/lazy"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
-
-type Params struct {
-	fx.In
-	Query  lazy.Lazy[*dao.Query]
-	Logger *zap.SugaredLogger
-}
 
 type Result struct {
 	fx.Out
 	Collector prometheus.Collector `group:"prometheus_collectors"`
+	Metrics   QueueMetrics
 }
 
-func New(p Params) Result {
+func New() Result {
+	jobsTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "jobs_total",
+		Help:      "Number of queue jobs; broken down by queue and status.",
+	}, []string{"queue", "status"})
+
 	return Result{
-		Collector: &queueMetricsCollector{
-			query:  p.Query,
-			logger: p.Logger.Named("queue_metrics_collector"),
+		Collector: jobsTotal,
+		Metrics: &queueMetrics{
+			jobsTotal: jobsTotal,
 		},
 	}
 }

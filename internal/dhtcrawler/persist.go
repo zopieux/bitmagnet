@@ -49,6 +49,9 @@ func (c *crawler) runPersistTorrents(ctx context.Context) {
 						c.logger.Errorf("error creating queue job: %s", err.Error())
 					} else {
 						queueJobsToPersist = append(queueJobsToPersist, &job)
+						if c.queueMetrics != nil {
+							c.queueMetrics.Inc(job.Queue, model.QueueJobStatusPending)
+						}
 					}
 				}
 

@@ -17,6 +17,7 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo/banning"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo/metainforequester"
+	queueprometheus "github.com/bitmagnet-io/bitmagnet/internal/queue/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
 	boom "github.com/tylertreat/BoomFilters"
 	"go.uber.org/zap"
@@ -56,6 +57,7 @@ type crawler struct {
 	soughtNodeID   *concurrency.AtomicValue[protocol.ID]
 	stopped        chan struct{}
 	persistedTotal *prometheus.CounterVec
+	queueMetrics   queueprometheus.QueueMetrics
 	logger         *zap.SugaredLogger
 	// stats counters for the periodic crawler stats log line
 	statsSampled   atomic.Int64

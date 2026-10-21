@@ -19,12 +19,12 @@ var defaultPragmas = []string{
 	"foreign_keys(1)",
 	"journal_mode(WAL)",
 	"busy_timeout(5000)",
-	"synchronous(OFF)",
+	"synchronous(NORMAL)",
 	"cache_size(-64000)",
 	"mmap_size(536870912)",
 	"temp_store(MEMORY)",
-	"wal_autocheckpoint(10000)",
-	"auto_vacuum(INCREMENTAL)",
+	"wal_autocheckpoint(25000)",
+	"journal_size_limit(134217728)",
 }
 
 func pragmaName(p string) string {

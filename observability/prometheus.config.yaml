@@ -1,0 +1,12 @@
+# Standalone Prometheus for local development (launched via mprocs.yaml).
+# Scrapes the bitmagnet app's own /metrics endpoint; no exporters, no agent.
+global:
+  scrape_interval: 5s
+  scrape_timeout: 4s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: bitmagnet
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:3333"]

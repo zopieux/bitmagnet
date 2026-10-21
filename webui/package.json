@@ -1,0 +1,26 @@
+{
+  "name": "webui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "tsc",
+    "lint": "tsc",
+    "graphql:codegen": "echo 'graphql:codegen'",
+    "i18n:extract": "echo 'i18n:extract'"
+  },
+  "dependencies": {
+    "@picocss/pico": "^2.0.6",
+    "chart.js": "^4.5.1",
+    "solid-js": "^1.8.15"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^5.3.3",
+    "vite": "^8.3.4",
+    "vite-plugin-solid": "^2.10.0"
+  }
+}

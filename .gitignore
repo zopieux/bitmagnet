@@ -1,0 +1,33 @@
+.direnv
+/data
+/export.sql
+dump.rdb
+.jekyll-cache
+.sass-cache
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Miscellaneous
+.sass-cache/
+testem.log
+
+# Build artifacts (never commit; built via `npm run build` in webui/)
+/webui/dist
+/admin_dashboard.png
+
+scratch/
+.sshbox.toml
+.home
+result
+result-*
+/app.pid

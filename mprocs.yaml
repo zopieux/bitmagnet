@@ -1,0 +1,18 @@
+procs:
+  fakedht:
+    shell: nix develop --command go run ./cmd/fakedht
+    env:
+      FAKEDHT_COUNT: "2000"
+  app:
+    shell: nix develop --command go run . worker run --all
+    env:
+      XDG_CONFIG_HOME: scratch/dht-test
+      XDG_DATA_HOME: scratch/dht-test
+      DB_DSN: scratch/dht-test/dht.db
+      DB_WRITE_INTERVAL: "5s"
+      DHT_CRAWLER_BOOTSTRAP_NODES: "127.0.0.1:6889"
+      DHT_CRAWLER_INFO_HASH_TRIAGE_INTERVAL: "5s"
+  prometheus:
+    shell: P=$(nix-shell -p prometheus --run "command -v prometheus") && exec $P --config.file=observability/prometheus.config.yaml --storage.tsdb.path=scratch/prometheus --storage.tsdb.retention.time=48h --web.listen-address=127.0.0.1:9090
+  grafana:
+    shell: G=$(nix-shell -p grafana --run "command -v grafana") && TMPDIR=$PWD/scratch/grafana/tmp GF_PATHS_DATA=$PWD/scratch/grafana/data GF_PATHS_LOGS=$PWD/scratch/grafana/logs GF_PATHS_PLUGINS=$PWD/scratch/grafana/plugins GF_PATHS_PROVISIONING=$PWD/observability/provisioning GF_SERVER_HTTP_PORT=3000 GF_AUTH_ANONYMOUS_ENABLED=true GF_AUTH_ANONYMOUS_ORG_ROLE=Admin exec $G server --homepath=$(dirname $(dirname $G))/share/grafana

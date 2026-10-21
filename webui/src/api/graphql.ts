@@ -332,7 +332,6 @@ export async function getAdminMetrics(timeframe: TimeframeMode = 'hourly'): Prom
       }
       queue {
         jobs(input: $jobsInput) {
-          totalCount
           aggregations {
             status {
               value
@@ -374,8 +373,8 @@ export async function getAdminMetrics(timeframe: TimeframeMode = 'hourly'): Prom
   `;
 
   const variables = {
-    searchCountInput: { limit: 1, totalCount: true },
-    jobsInput: { limit: 1, totalCount: true, facets: { status: { aggregate: true } } },
+    searchCountInput: { limit: 0, totalCount: true },
+    jobsInput: { limit: 0, totalCount: false, facets: { status: { aggregate: true } } },
     queueInput: { bucketDuration: 'minute', startTime: startTime5m },
     torrentInput: { bucketDuration: 'minute', startTime: startTime5m },
     queueHistoryInput: { bucketDuration: historyBucketDuration, startTime: startTimeHistory },
@@ -386,7 +385,7 @@ export async function getAdminMetrics(timeframe: TimeframeMode = 'hourly'): Prom
     const data = await graphqlFetch<{
       torrentContent: { search: { totalCount: number } };
       queue: {
-        jobs: { totalCount: number; aggregations?: { status?: { value: string; count: number }[] } };
+        jobs: { aggregations?: { status?: { value: string; count: number }[] } };
         metrics: { buckets?: { queue: string; status: string; count: number }[] };
         metricsHistory: { buckets?: { bucket: string; status: string; count: number }[] };
       };

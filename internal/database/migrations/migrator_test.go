@@ -26,9 +26,9 @@ func TestMigrations(t *testing.T) {
 
 	// Verify indexes exist
 	var count int
-	err = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='index' AND name IN ('idx_torrent_contents_published_at', 'idx_torrent_contents_type_published_at')").Scan(&count)
+	err = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='index' AND name IN ('idx_torrent_contents_published_at', 'idx_torrent_contents_type_published_at', 'idx_torrents_torrent_sources_datetime_updated_at', 'idx_queue_jobs_status_created_at', 'idx_queue_jobs_ran_at')").Scan(&count)
 	require.NoError(t, err)
-	require.Equal(t, 2, count)
+	require.Equal(t, 5, count)
 
 	// Test rollback
 	err = goose.DownContext(ctx, db, ".")

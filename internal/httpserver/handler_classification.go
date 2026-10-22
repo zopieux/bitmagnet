@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"database/sql/driver"
 	"net/http"
 	"strconv"
 
@@ -10,6 +11,8 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/model"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ClassificationHandler struct {
@@ -30,14 +33,14 @@ func NewClassificationHandler(q lazy.Lazy[*dao.Query], bm lazy.Lazy[blocking.Man
 }
 
 type PatchClassificationItem struct {
-	InfoHash string   `json:"info_hash"`
+	InfoHash string   `json:"infoHash"`
 	Action   string   `json:"action"` // "do_nothing" or "delete"
 	Tags     []string `json:"tags"`
 	// ContentType, when present, replaces the torrent's content type.
 	// Must be a valid content type value (e.g. "movie", "music", "xxx");
 	// invalid values are ignored. This lets an external classifier
 	// override the builtin classification after the fact.
-	ContentType *string `json:"content_type"`
+	ContentType *string `json:"contentType"`
 }
 
 func (h *ClassificationHandler) Key() string {
@@ -69,25 +72,55 @@ func (h *ClassificationHandler) GetBatch(c *gin.Context) {
 	db := h.dao.TorrentContent.WithContext(c.Request.Context()).ReadDB().UnderlyingDB()
 
 	if tag != "" {
-		tagSubQuery := h.dao.TorrentTag.WithContext(c.Request.Context()).Select(h.dao.TorrentTag.InfoHash).Where(h.dao.TorrentTag.Name.Eq(tag))
-		db = db.Where("info_hash IN (?)", tagSubQuery)
+		db = db.Where("info_hash IN (SELECT info_hash FROM torrent_tags WHERE name = ?)", tag)
 	}
 
 	if excludeTag != "" {
-		excludeSubQuery := h.dao.TorrentTag.WithContext(c.Request.Context()).Select(h.dao.TorrentTag.InfoHash).Where(h.dao.TorrentTag.Name.Eq(excludeTag))
-		db = db.Where("info_hash NOT IN (?)", excludeSubQuery)
+		db = db.Where("info_hash NOT IN (SELECT info_hash FROM torrent_tags WHERE name = ?)", excludeTag)
 	}
 
 	var results []model.TorrentContent
-	err := db.Limit(limit).Find(&results).Error
+	err := db.
+		Preload("Torrent").
+		Preload("Torrent.Files").
+		Preload("Torrent.Tags").
+		Preload("Torrent.Sources").
+		Preload("Torrent.Hint").
+		Limit(limit).
+		Find(&results).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	for i := range results {
+		if len(results[i].Torrent.Files) == 0 && results[i].Torrent.Name != "" {
+			results[i].Torrent.Files = []model.TorrentFile{
+				{
+					InfoHash:  results[i].Torrent.InfoHash,
+					Index:     0,
+					Path:      results[i].Torrent.Name,
+					Extension: results[i].Torrent.Extension,
+					Size:      results[i].Torrent.Size,
+				},
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"items": results,
 	})
+}
+
+func chunkSlice[T any](items []T, size int) [][]T {
+	if len(items) == 0 {
+		return nil
+	}
+	var chunks [][]T
+	for size < len(items) {
+		items, chunks = items[size:], append(chunks, items[0:size:size])
+	}
+	return append(chunks, items)
 }
 
 func (h *ClassificationHandler) PatchBatch(c *gin.Context) {
@@ -97,10 +130,11 @@ func (h *ClassificationHandler) PatchBatch(c *gin.Context) {
 		return
 	}
 
-	// Deletes go through the blocking manager (same as the UI delete):
-	// the rows are deleted and the hashes tombstoned in the blocked
-	// torrents bloom filter, so the crawler never re-discovers them.
 	var toDelete []protocol.ID
+	contentTypes := make(map[model.NullContentType][]driver.Valuer)
+	var tagInfoHashes []driver.Valuer
+	var tagsToInsert []*model.TorrentTag
+	tagHashesSeen := make(map[protocol.ID]struct{})
 
 	for _, item := range items {
 		infoHash, err := protocol.ParseID(item.InfoHash)
@@ -112,22 +146,68 @@ func (h *ClassificationHandler) PatchBatch(c *gin.Context) {
 			continue
 		}
 		if item.ContentType != nil {
-			if ct, parseErr := model.ParseContentType(*item.ContentType); parseErr == nil {
-				db := h.dao.TorrentContent.WithContext(c.Request.Context()).UnderlyingDB()
-				_ = db.Model(&model.TorrentContent{}).
-					Where("info_hash = ?", infoHash).
-					Update("content_type", model.NewNullContentType(ct)).Error
+			if *item.ContentType == "" {
+				contentTypes[model.NullContentType{}] = append(contentTypes[model.NullContentType{}], infoHash)
+			} else if ct, parseErr := model.ParseContentType(*item.ContentType); parseErr == nil {
+				contentTypes[model.NewNullContentType(ct)] = append(contentTypes[model.NewNullContentType(ct)], infoHash)
 			}
 		}
 		if item.Tags != nil {
-			_, _ = h.dao.TorrentTag.WithContext(c.Request.Context()).Where(h.dao.TorrentTag.InfoHash.Eq(infoHash)).Delete()
+			if _, seen := tagHashesSeen[infoHash]; !seen {
+				tagHashesSeen[infoHash] = struct{}{}
+				tagInfoHashes = append(tagInfoHashes, infoHash)
+			}
+			tagMap := make(map[string]struct{}, len(item.Tags))
 			for _, t := range item.Tags {
-				_ = h.dao.TorrentTag.WithContext(c.Request.Context()).Create(&model.TorrentTag{
+				if err := model.ValidateTagName(t); err != nil {
+					continue
+				}
+				if _, ok := tagMap[t]; ok {
+					continue
+				}
+				tagMap[t] = struct{}{}
+				tagsToInsert = append(tagsToInsert, &model.TorrentTag{
 					InfoHash: infoHash,
 					Name:     t,
 				})
 			}
 		}
+	}
+
+	db := h.dao.TorrentContent.WithContext(c.Request.Context()).UnderlyingDB()
+	txErr := db.Transaction(func(tx *gorm.DB) error {
+		for ct, hashes := range contentTypes {
+			for _, chunk := range chunkSlice(hashes, 500) {
+				if err := tx.Table("torrent_contents").
+					Where("info_hash IN (?)", chunk).
+					Update("content_type", ct).Error; err != nil {
+					return err
+				}
+			}
+		}
+
+		if len(tagInfoHashes) > 0 {
+			for _, chunk := range chunkSlice(tagInfoHashes, 500) {
+				if err := tx.Table("torrent_tags").
+					Where("info_hash IN (?)", chunk).
+					Delete(&model.TorrentTag{}).Error; err != nil {
+					return err
+				}
+			}
+			if len(tagsToInsert) > 0 {
+				if err := tx.Table("torrent_tags").
+					Clauses(clause.OnConflict{DoNothing: true}).
+					CreateInBatches(tagsToInsert, 500).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+
+	if txErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": txErr.Error()})
+		return
 	}
 
 	if len(toDelete) > 0 {

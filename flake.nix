@@ -55,9 +55,14 @@
               if stdenv.hostPlatform.isLinux
               then [
                 chromium
+                shot-scraper
+                playwright-driver.browsers
               ]
               else []
             );
+          shellHook = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+            export PLAYWRIGHT_BROWSERS_PATH="${pkgs.playwright-driver.browsers}"
+          '';
         };
       };
     });

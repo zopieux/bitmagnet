@@ -172,7 +172,7 @@ const FilesPanel: Component<{ hash: string; active: boolean }> = (props) => {
           <table class="compact-table" style={{ margin: 0, 'border-radius': 0 }}>
             <thead>
               <tr>
-                <th>File Path</th>
+                <th class="torrent-file-col">File Path</th>
                 <th style={{ width: '110px', 'text-align': 'right' }}>Size</th>
               </tr>
             </thead>
@@ -180,7 +180,7 @@ const FilesPanel: Component<{ hash: string; active: boolean }> = (props) => {
               <For each={data()!.items}>
                 {(file) => (
                   <tr>
-                    <td style={{ 'word-break': 'break-all', 'font-size': '0.82rem' }}>{file.path}</td>
+                    <td class="torrent-file-col" title={file.path}>{file.path}</td>
                     <td style={{ 'white-space': 'nowrap', 'text-align': 'right', 'font-size': '0.82rem' }} title={String(file.size)}>{formatSize(file.size)}</td>
                   </tr>
                 )}
@@ -779,11 +779,11 @@ export const TorrentList: Component = () => {
                       style={{ margin: 0 }}
                     />
                   </th>
-                  <th>Name / Content</th>
-                  <th>Category</th>
-                  <th>Size</th>
-                  <th>Seeds / Leech</th>
-                  <th>Tags</th>
+                  <th class="torrent-title-col">Name / Content</th>
+                  <th class="col-fit">Category</th>
+                  <th class="col-fit">Size</th>
+                  <th class="col-fit">Seeds / Leech</th>
+                  <th class="col-fit">Tags</th>
                   <th style={{ width: '44px' }}></th>
                 </tr>
               </thead>
@@ -815,8 +815,8 @@ export const TorrentList: Component = () => {
                               style={{ margin: 0 }}
                             />
                           </td>
-                          <td>
-                            <div style={{ display: 'flex', 'align-items': 'flex-start', gap: '0.35rem' }}>
+                          <td class="torrent-title-col">
+                            <div style={{ display: 'flex', 'align-items': 'flex-start', gap: '0.35rem', 'min-width': 0 }}>
                               <span
                                 style={{
                                   display: 'inline-block',
@@ -825,12 +825,13 @@ export const TorrentList: Component = () => {
                                   'margin-top': '0.25rem',
                                   transform: open() ? 'rotate(90deg)' : 'none',
                                   transition: 'transform 0.15s',
+                                  'flex-shrink': '0',
                                 }}
                               >
                                 ▶
                               </span>
-                              <div>
-                                <div style={{ 'font-weight': '600', color: 'var(--app-text)' }}>
+                              <div style={{ 'min-width': 0, flex: '1' }}>
+                                <div class="torrent-title-text" title={item.title || item.torrent.name}>
                                   {item.title || item.torrent.name}
                                 </div>
                                 <div
@@ -852,7 +853,7 @@ export const TorrentList: Component = () => {
                               </div>
                             </div>
                           </td>
-                          <td>
+                          <td class="col-fit">
                             <span style={{ 'text-transform': 'capitalize', 'font-size': '0.8rem' }}>
                               {item.contentType || 'unclassified'}
                             </span>
@@ -865,7 +866,7 @@ export const TorrentList: Component = () => {
                               </div>
                             </Show>
                           </td>
-                          <td style={{ 'white-space': 'nowrap' }}>
+                          <td class="col-fit" style={{ 'white-space': 'nowrap' }}>
                             <div title={String(item.torrent.size)}>{formatSize(item.torrent.size)}</div>
                             <Show when={item.torrent.filesStatus === 'single' || item.torrent.filesCount != null}>
                               <div style={{ color: 'var(--app-text-muted)', 'font-size': '0.72rem', 'margin-top': '0.1rem' }}>
@@ -875,12 +876,12 @@ export const TorrentList: Component = () => {
                               </div>
                             </Show>
                           </td>
-                          <td style={{ 'white-space': 'nowrap', 'font-size': '0.8rem' }}>
+                          <td class="col-fit" style={{ 'white-space': 'nowrap', 'font-size': '0.8rem' }}>
                             <span style={{ color: '#16a34a', 'font-weight': '500' }}>▲ {item.torrent.seeders || item.seeders || 0}</span>
                             <span style={{ color: 'var(--app-text-muted)', margin: '0 0.2rem' }}>/</span>
                             <span style={{ color: '#dc2626', 'font-weight': '500' }}>▼ {item.torrent.leechers || item.leechers || 0}</span>
                           </td>
-                          <td>
+                          <td class="col-fit">
                             <div style={{ display: 'flex', 'flex-wrap': 'wrap', gap: '0.2rem' }}>
                               <For each={tagsFor(item)}>
                                 {(tag) => (

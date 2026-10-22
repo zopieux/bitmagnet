@@ -176,6 +176,34 @@ const App = () => {
           border-bottom: none;
         }
 
+        /* Table column sizing & ellipsis truncation */
+        .col-fit {
+          width: 1%;
+          white-space: nowrap;
+        }
+
+        .torrent-title-col {
+          width: 100%;
+          max-width: 0;
+        }
+
+        .torrent-title-text {
+          font-weight: 600;
+          color: var(--app-text);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .torrent-file-col {
+          width: 100%;
+          max-width: 0;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          font-size: 0.82rem;
+        }
+
         .btn-icon {
           display: inline-flex;
           align-items: center;

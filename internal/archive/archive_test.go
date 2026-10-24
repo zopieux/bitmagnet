@@ -54,6 +54,9 @@ func TestArchiveMigrationAndAttach(t *testing.T) {
 	// Test CopyToArchive using ATTACH
 	require.NoError(t, CopyToArchive(ctx, mainDB, archiveFile, []protocol.ID{h}))
 
+	// Verify calling CopyToArchive a second time does not fail with "database archive is already in use"
+	require.NoError(t, CopyToArchive(ctx, mainDB, archiveFile, []protocol.ID{h}))
+
 	// Verify in archiveDB directly (test-only verification)
 	var name string
 	require.NoError(t, archiveDB.QueryRow(`SELECT name FROM torrents WHERE info_hash = ?`, h[:]).Scan(&name))

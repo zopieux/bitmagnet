@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -135,20 +136,79 @@ func Up(ctx context.Context, db *sql.DB) error {
 	return err
 }
 
-func CopyToArchive(ctx context.Context, mainDB *sql.DB, archivePath string, hashes []protocol.ID) error {
-	if len(hashes) == 0 {
-		return nil
+func pathsMatch(p1, p2 string) bool {
+	if p1 == ":memory:" || p2 == ":memory:" {
+		return p1 == p2 || p1 == "" || p2 == ""
+	}
+	abs1, err1 := filepath.Abs(p1)
+	abs2, err2 := filepath.Abs(p2)
+	if err1 == nil && err2 == nil {
+		return filepath.Clean(abs1) == filepath.Clean(abs2)
+	}
+	return filepath.Clean(p1) == filepath.Clean(p2)
+}
+
+func getAttachedArchiveFile(ctx context.Context, db *sql.DB) (string, bool, error) {
+	rows, err := db.QueryContext(ctx, "PRAGMA database_list")
+	if err != nil {
+		return "", false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var seq int
+		var name, file string
+		if err := rows.Scan(&seq, &name, &file); err != nil {
+			return "", false, err
+		}
+		if name == "archive" {
+			return file, true, nil
+		}
+	}
+	return "", false, rows.Err()
+}
+
+func ensureArchiveAttached(ctx context.Context, mainDB *sql.DB, archivePath string) error {
+	attachedFile, isAttached, err := getAttachedArchiveFile(ctx, mainDB)
+	if err != nil {
+		return fmt.Errorf("failed to query database_list: %w", err)
+	}
+
+	if isAttached {
+		if pathsMatch(attachedFile, archivePath) {
+			return nil
+		}
+		detachCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := mainDB.ExecContext(detachCtx, "DETACH DATABASE archive"); err != nil {
+			return fmt.Errorf("failed to detach previous archive db: %w", err)
+		}
 	}
 
 	escapedPath := strings.ReplaceAll(archivePath, "'", "''")
 	attachQuery := fmt.Sprintf("ATTACH DATABASE '%s' AS archive", escapedPath)
 
-	if _, err := mainDB.ExecContext(ctx, attachQuery); err != nil {
+	attachCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if _, err := mainDB.ExecContext(attachCtx, attachQuery); err != nil {
+		if file, stillAttached, checkErr := getAttachedArchiveFile(ctx, mainDB); checkErr == nil && stillAttached && pathsMatch(file, archivePath) {
+			return nil
+		}
 		return fmt.Errorf("failed to attach archive db: %w", err)
 	}
-	defer func() {
-		_, _ = mainDB.ExecContext(ctx, "DETACH DATABASE archive")
-	}()
+
+	return nil
+}
+
+func CopyToArchive(ctx context.Context, mainDB *sql.DB, archivePath string, hashes []protocol.ID) error {
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	if err := ensureArchiveAttached(ctx, mainDB, archivePath); err != nil {
+		return err
+	}
 
 	for batch := range slices.Chunk(hashes, batchSize) {
 		placeholders := strings.Repeat("?,", len(batch))

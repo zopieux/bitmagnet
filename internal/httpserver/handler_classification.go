@@ -195,6 +195,29 @@ func (h *ClassificationHandler) PatchBatch(c *gin.Context) {
 				}
 			}
 			if len(tagsToInsert) > 0 {
+				// The torrent may have been deleted while this batch was in
+				// flight; inserting a tag for it would violate the foreign key.
+				existing := make(map[protocol.ID]struct{}, len(tagHashesSeen))
+				for _, chunk := range chunkSlice(tagInfoHashes, 500) {
+					var hashes []protocol.ID
+					if err := tx.Table("torrents").
+						Where("info_hash IN (?)", chunk).
+						Pluck("info_hash", &hashes).Error; err != nil {
+						return err
+					}
+					for _, hash := range hashes {
+						existing[hash] = struct{}{}
+					}
+				}
+				filtered := tagsToInsert[:0]
+				for _, tag := range tagsToInsert {
+					if _, ok := existing[tag.InfoHash]; ok {
+						filtered = append(filtered, tag)
+					}
+				}
+				tagsToInsert = filtered
+			}
+			if len(tagsToInsert) > 0 {
 				if err := tx.Table("torrent_tags").
 					Clauses(clause.OnConflict{DoNothing: true}).
 					CreateInBatches(tagsToInsert, 500).Error; err != nil {

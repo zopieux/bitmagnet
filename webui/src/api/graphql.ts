@@ -53,6 +53,7 @@ export interface TorrentSearchAggregations {
 
 export interface TorrentSearchResult {
   totalCount: number;
+  totalCountIsEstimate?: boolean;
   hasNextPage?: boolean;
   items: TorrentContentItem[];
   aggregations?: TorrentSearchAggregations;
@@ -135,6 +136,7 @@ export async function searchTorrents(options: SearchOptions): Promise<TorrentSea
       torrentContent {
         search(input: $input) {
           totalCount
+          totalCountIsEstimate
           hasNextPage
           items {
             id

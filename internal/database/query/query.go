@@ -99,9 +99,12 @@ func (gq *genericQuery[_]) addError(err error) {
 	gq.errs = append(gq.errs, err)
 }
 
+const CountCap = 1000
+
 type countCacheEntry struct {
-	count     uint
-	expiresAt time.Time
+	count                uint
+	totalCountIsEstimate bool
+	expiresAt            time.Time
 }
 
 var (
@@ -117,7 +120,7 @@ func (gq *genericQuery[_]) doCount() {
 			unfilteredCountMu.RUnlock()
 			if ok && time.Now().Before(entry.expiresAt) {
 				gq.result.TotalCount = entry.count
-				gq.result.TotalCountIsEstimate = false
+				gq.result.TotalCountIsEstimate = entry.totalCountIsEstimate
 				return
 			}
 		}
@@ -129,16 +132,26 @@ func (gq *genericQuery[_]) doCount() {
 		}
 
 		var count int64
-		if countErr := sq.UnderlyingDB().Count(&count).Error; countErr != nil {
+		subSQL := sq.UnderlyingDB().ToSQL(func(tx *gorm.DB) *gorm.DB {
+			return tx.Select("1").Limit(CountCap + 1).Find(&[]int{})
+		})
+		countErr := sq.UnderlyingDB().Raw(fmt.Sprintf("SELECT count(*) FROM (%s)", subSQL)).Scan(&count).Error
+		if countErr != nil {
 			gq.addError(countErr)
 		} else {
-			gq.result.TotalCount = uint(count)
-			gq.result.TotalCountIsEstimate = false
+			if count > CountCap {
+				gq.result.TotalCount = uint(CountCap)
+				gq.result.TotalCountIsEstimate = true
+			} else {
+				gq.result.TotalCount = uint(count)
+				gq.result.TotalCountIsEstimate = false
+			}
 			if !gq.builder.HasFilter() {
 				unfilteredCountMu.Lock()
 				unfilteredCountCache[gq.builder.TableName()] = countCacheEntry{
-					count:     uint(count),
-					expiresAt: time.Now().Add(60 * time.Second),
+					count:                gq.result.TotalCount,
+					totalCountIsEstimate: gq.result.TotalCountIsEstimate,
+					expiresAt:           time.Now().Add(60 * time.Second),
 				}
 				unfilteredCountMu.Unlock()
 			}

@@ -384,6 +384,7 @@ export const TorrentList: Component = () => {
 
   const [items, setItems] = createSignal<TorrentContentItem[]>([]);
   const [totalCount, setTotalCount] = createSignal(0);
+  const [totalCountIsEstimate, setTotalCountIsEstimate] = createSignal(false);
   const [hasNextPage, setHasNextPage] = createSignal(false);
   const [categoryAggs, setCategoryAggs] = createSignal<AggregationItem[]>([]);
   const [tagAggs, setTagAggs] = createSignal<AggregationItem[]>([]);
@@ -467,6 +468,7 @@ export const TorrentList: Component = () => {
       });
       setItems(res.items || []);
       setTotalCount(res.totalCount || 0);
+      setTotalCountIsEstimate(!!res.totalCountIsEstimate);
       setHasNextPage(!!res.hasNextPage);
       if (res.aggregations?.contentType && res.aggregations.contentType.length > 0) {
         setCategoryAggs(res.aggregations.contentType);
@@ -618,7 +620,7 @@ export const TorrentList: Component = () => {
     }
   };
 
-  const totalPages = () => Math.ceil(totalCount() / limit()) || 1;
+  const totalPages = () => Math.max(page(), Math.ceil(totalCount() / limit()) || 1);
 
   return (
     <div style={{ display: 'flex', 'flex-direction': 'column', flex: '1', 'min-height': '0' }}>
@@ -759,7 +761,7 @@ export const TorrentList: Component = () => {
 
           <div style={{ display: 'flex', 'justify-content': 'space-between', 'align-items': 'center', 'margin-bottom': '0.75rem', 'font-size': '0.82rem', color: 'var(--app-text-muted)' }}>
             <span>
-              Showing {items().length} of <strong style={{ color: 'var(--app-text)' }}>{totalCount()}</strong> torrents
+              Showing {items().length} of <strong style={{ color: 'var(--app-text)' }}>{totalCount()}{totalCountIsEstimate() ? '+' : ''}</strong> torrents
               <span class="list-spinner" style={{ visibility: loading() ? 'visible' : 'hidden' }} />
             </span>
             <div style={{ display: 'flex', 'align-items': 'center', gap: '0.4rem', 'flex-shrink': 0 }}>
@@ -979,7 +981,7 @@ export const TorrentList: Component = () => {
               ← Previous
             </button>
             <span style={{ 'font-size': '0.82rem', color: 'var(--app-text-muted)' }}>
-              Page <strong style={{ color: 'var(--app-text)' }}>{page()}</strong> of <strong style={{ color: 'var(--app-text)' }}>{totalPages()}</strong>
+              Page <strong style={{ color: 'var(--app-text)' }}>{page()}</strong> of <strong style={{ color: 'var(--app-text)' }}>{totalPages()}{totalCountIsEstimate() ? '+' : ''}</strong>
             </span>
             <button
               class="nav-btn"

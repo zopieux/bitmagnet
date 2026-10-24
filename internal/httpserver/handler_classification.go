@@ -34,7 +34,7 @@ func NewClassificationHandler(q lazy.Lazy[*dao.Query], bm lazy.Lazy[blocking.Man
 
 type PatchClassificationItem struct {
 	InfoHash string   `json:"infoHash"`
-	Action   string   `json:"action"` // "do_nothing" or "delete"
+	Action   string   `json:"action"` // "do_nothing", "delete", or "archive"
 	Tags     []string `json:"tags"`
 	// ContentType, when present, replaces the torrent's content type.
 	// Must be a valid content type value (e.g. "movie", "music", "xxx");
@@ -131,6 +131,7 @@ func (h *ClassificationHandler) PatchBatch(c *gin.Context) {
 	}
 
 	var toDelete []protocol.ID
+	var toArchive []protocol.ID
 	contentTypes := make(map[model.NullContentType][]driver.Valuer)
 	var tagInfoHashes []driver.Valuer
 	var tagsToInsert []*model.TorrentTag
@@ -144,6 +145,12 @@ func (h *ClassificationHandler) PatchBatch(c *gin.Context) {
 		if item.Action == "delete" {
 			toDelete = append(toDelete, infoHash)
 			continue
+		}
+		if item.Action == "archive" {
+			toArchive = append(toArchive, infoHash)
+			if item.ContentType == nil && item.Tags == nil {
+				continue
+			}
 		}
 		if item.ContentType != nil {
 			if *item.ContentType == "" {
@@ -231,6 +238,13 @@ func (h *ClassificationHandler) PatchBatch(c *gin.Context) {
 	if txErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": txErr.Error()})
 		return
+	}
+
+	if len(toArchive) > 0 {
+		if err := h.blocking.Archive(c.Request.Context(), toArchive); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	if len(toDelete) > 0 {

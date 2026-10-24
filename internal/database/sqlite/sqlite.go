@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/bitmagnet-io/bitmagnet/internal/archive"
 	"github.com/bitmagnet-io/bitmagnet/internal/lazy"
 	_ "github.com/glebarez/go-sqlite"
 	"go.uber.org/fx"
@@ -61,23 +62,32 @@ type Params struct {
 
 type Result struct {
 	fx.Out
-	SQLDB     lazy.Lazy[*sql.DB]
+	DB        lazy.Lazy[*sql.DB]
 	FlushWait *sync.WaitGroup `name:"db_flush_wait"`
 	AppHook   fx.Hook         `group:"app_hooks"`
 }
 
-func New(p Params) (Result, error) {
-	flushWait := &sync.WaitGroup{}
-
-	dbPath := p.Config.DSN
-	if dbPath == "" {
-		dbPath = p.Config.Name
-		if dbPath == "" || dbPath == "bitmagnet" {
-			dbPath = "bitmagnet.db"
-		}
+func DBPath(config Config) string {
+	if config.DSN != "" {
+		return config.DSN
 	}
+	if config.Name != "" && config.Name != "bitmagnet" {
+		return config.Name
+	}
+	return "bitmagnet.db"
+}
 
-	lazyDB := lazy.New(func() (*sql.DB, error) {
+func ArchiveDBPath(dbPath string) string {
+	if dbPath == ":memory:" {
+		return ":memory:"
+	}
+	basePath, _, _ := strings.Cut(dbPath, "?")
+	dir := filepath.Dir(basePath)
+	return filepath.Join(dir, "archive.db")
+}
+
+func openLazyDB(dbPath string) lazy.Lazy[*sql.DB] {
+	return lazy.New(func() (*sql.DB, error) {
 		if dbPath != ":memory:" {
 			dir := filepath.Dir(dbPath)
 			if dir != "" && dir != "." {
@@ -91,12 +101,34 @@ func New(p Params) (Result, error) {
 		db.SetMaxOpenConns(1)
 		return db, nil
 	})
+}
+
+func New(p Params) (Result, error) {
+	flushWait := &sync.WaitGroup{}
+
+	dbPath := DBPath(p.Config)
+
+	lazyDB := openLazyDB(dbPath)
+	archivePath := ArchiveDBPath(dbPath)
+	lazyArchiveDB := openLazyDB(archivePath)
 
 	return Result{
-		SQLDB:     lazyDB,
+		DB:        lazyDB,
 		FlushWait: flushWait,
 		AppHook: fx.Hook{
-			OnStart: func(context.Context) error {
+			OnStart: func(ctx context.Context) error {
+				adb, err := lazyArchiveDB.Get()
+				if err != nil {
+					return err
+				}
+				if err := archive.Up(ctx, adb); err != nil {
+					return err
+				}
+				if archivePath != ":memory:" {
+					if err := ensureIncrementalAutoVacuum(adb, p.Logger); err != nil {
+						return err
+					}
+				}
 				if dbPath == ":memory:" {
 					return nil
 				}
@@ -111,6 +143,9 @@ func New(p Params) (Result, error) {
 				// If the blocking module is not part of the app (e.g. dev
 				// commands), nothing ever calls Add and this returns at once.
 				flushWait.Wait()
+				if adb, err := lazyArchiveDB.Get(); err == nil {
+					_ = adb.Close()
+				}
 				if db, err := lazyDB.Get(); err == nil {
 					_ = db.Close()
 				}

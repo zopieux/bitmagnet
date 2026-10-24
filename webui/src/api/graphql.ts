@@ -295,6 +295,17 @@ export async function deleteTorrents(infoHashes: string[]): Promise<void> {
   await graphqlFetch(query, { infoHashes });
 }
 
+export async function archiveTorrents(infoHashes: string[]): Promise<void> {
+  const query = `
+    mutation ArchiveTorrents($infoHashes: [Hash20!]!) {
+      torrent {
+        archive(infoHashes: $infoHashes)
+      }
+    }
+  `;
+  await graphqlFetch(query, { infoHashes });
+}
+
 export async function getAdminMetrics(timeframe: TimeframeMode = 'hourly'): Promise<AdminDashboardMetrics> {
   const now = new Date();
   const startTime5m = new Date(now.getTime() - 5 * 60 * 1000).toISOString();

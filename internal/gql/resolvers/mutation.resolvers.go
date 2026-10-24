@@ -30,6 +30,12 @@ func (r *torrentMutationResolver) Delete(ctx context.Context, obj *gqlmodel.Torr
 	return nil, err
 }
 
+// Archive is the resolver for the archive field.
+func (r *torrentMutationResolver) Archive(ctx context.Context, obj *gqlmodel.TorrentMutation, infoHashes []protocol.ID) (*string, error) {
+	err := r.BlockingManager.Archive(ctx, infoHashes)
+	return nil, err
+}
+
 // PutTags is the resolver for the putTags field.
 func (r *torrentMutationResolver) PutTags(ctx context.Context, obj *gqlmodel.TorrentMutation, infoHashes []protocol.ID, tagNames []string) (*string, error) {
 	return nil, r.Dao.TorrentTag.Put(ctx, infoHashes, tagNames)

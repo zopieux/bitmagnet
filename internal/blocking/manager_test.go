@@ -6,9 +6,12 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/bitmagnet-io/bitmagnet/internal/archive"
 	"github.com/bitmagnet-io/bitmagnet/internal/lazy"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol"
+	migrationssql "github.com/bitmagnet-io/bitmagnet/migrations"
 	_ "github.com/glebarez/go-sqlite"
+	goose "github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -80,4 +83,50 @@ func TestBlockingManagerFilterLoadsPersistedFilter(t *testing.T) {
 	filtered, err := m2.Filter(ctx, []protocol.ID{blockedHash, freshHash})
 	require.NoError(t, err)
 	assert.Equal(t, []protocol.ID{freshHash}, filtered)
+}
+
+func TestBlockingManagerArchive(t *testing.T) {
+	ctx := context.Background()
+	mainDB, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer mainDB.Close()
+
+	archiveFile := t.TempDir() + "/archive.db"
+	archiveDB, err := sql.Open("sqlite", archiveFile)
+	require.NoError(t, err)
+	defer archiveDB.Close()
+
+	require.NoError(t, archive.Up(ctx, archiveDB))
+	mainProvider, err := goose.NewProvider(goose.DialectSQLite3, mainDB, migrationssql.FS)
+	require.NoError(t, err)
+	_, err = mainProvider.Up(ctx)
+	require.NoError(t, err)
+
+	var archivedHash protocol.ID
+	copy(archivedHash[:], "archive-torrent-hash!")
+
+	_, err = mainDB.Exec(`INSERT INTO torrents (info_hash, name) VALUES (?, ?)`, archivedHash[:], "archived")
+	require.NoError(t, err)
+
+	m := &manager{
+		db:            mainDB,
+		archivePath:   archiveFile,
+		buffer:        make(map[protocol.ID]struct{}, 1000),
+		maxBufferSize: 1000,
+		maxFlushWait:  1000,
+	}
+
+	require.NoError(t, m.Archive(ctx, []protocol.ID{archivedHash}))
+
+	var count int
+	require.NoError(t, mainDB.QueryRow(`SELECT COUNT(*) FROM torrents WHERE info_hash = ?`, archivedHash[:]).Scan(&count))
+	assert.Equal(t, 0, count, "archived torrent should be deleted from main db")
+
+	filtered, err := m.Filter(ctx, []protocol.ID{archivedHash})
+	require.NoError(t, err)
+	assert.Empty(t, filtered, "archived torrent should be blocked by filter")
+
+	var archiveCount int
+	require.NoError(t, archiveDB.QueryRow(`SELECT COUNT(*) FROM torrents WHERE info_hash = ?`, archivedHash[:]).Scan(&archiveCount))
+	assert.Equal(t, 1, archiveCount, "archived torrent should be stored in archive db")
 }

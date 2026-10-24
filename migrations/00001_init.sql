@@ -2,6 +2,7 @@
 -- SQLite initial schema for bitmagnet. Column layout mirrors the gorm models
 -- in internal/model; the DAO in internal/database/dao is generated from them.
 
+-- +archive
 CREATE TABLE IF NOT EXISTS torrents (
     info_hash BLOB NOT NULL PRIMARY KEY,
     name TEXT NOT NULL,
@@ -14,6 +15,7 @@ CREATE TABLE IF NOT EXISTS torrents (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- +archive
 CREATE TABLE IF NOT EXISTS torrent_files (
     info_hash BLOB NOT NULL,
     "index" INTEGER NOT NULL,
@@ -26,6 +28,7 @@ CREATE TABLE IF NOT EXISTS torrent_files (
     FOREIGN KEY (info_hash) REFERENCES torrents (info_hash) ON DELETE CASCADE
 );
 
+-- +archive
 CREATE TABLE IF NOT EXISTS torrent_sources (
     key TEXT NOT NULL PRIMARY KEY,
     name TEXT NOT NULL,
@@ -33,6 +36,7 @@ CREATE TABLE IF NOT EXISTS torrent_sources (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- +archive
 CREATE TABLE IF NOT EXISTS torrents_torrent_sources (
     source TEXT NOT NULL,
     info_hash BLOB NOT NULL,
@@ -54,6 +58,7 @@ CREATE TABLE IF NOT EXISTS torrent_pieces (
     FOREIGN KEY (info_hash) REFERENCES torrents (info_hash) ON DELETE CASCADE
 );
 
+-- +archive
 CREATE TABLE IF NOT EXISTS torrent_contents (
     id TEXT NOT NULL PRIMARY KEY,
     info_hash BLOB NOT NULL,
@@ -79,10 +84,14 @@ CREATE TABLE IF NOT EXISTS torrent_contents (
     FOREIGN KEY (info_hash) REFERENCES torrents (info_hash) ON DELETE CASCADE
 );
 
+-- +archive
 CREATE INDEX IF NOT EXISTS idx_torrent_contents_info_hash ON torrent_contents (info_hash);
+-- +archive
 CREATE INDEX IF NOT EXISTS idx_torrent_contents_type ON torrent_contents (content_type);
+-- +archive
 CREATE INDEX IF NOT EXISTS idx_torrent_contents_content ON torrent_contents (content_source, content_id);
 
+-- +archive
 CREATE TABLE IF NOT EXISTS torrent_tags (
     info_hash BLOB NOT NULL,
     name TEXT NOT NULL,
@@ -92,8 +101,10 @@ CREATE TABLE IF NOT EXISTS torrent_tags (
     FOREIGN KEY (info_hash) REFERENCES torrents (info_hash) ON DELETE CASCADE
 );
 
+-- +archive
 CREATE INDEX IF NOT EXISTS idx_torrent_tags_name ON torrent_tags (name);
 
+-- +archive
 CREATE TABLE IF NOT EXISTS torrent_hints (
     info_hash BLOB NOT NULL PRIMARY KEY,
     content_type TEXT NOT NULL,

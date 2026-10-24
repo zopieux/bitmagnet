@@ -358,6 +358,7 @@ type ComplexityRoot struct {
 	}
 
 	TorrentMutation struct {
+		Archive    func(childComplexity int, infoHashes []protocol.ID) int
 		Delete     func(childComplexity int, infoHashes []protocol.ID) int
 		DeleteTags func(childComplexity int, infoHashes []protocol.ID, tagNames []string) int
 		PutTags    func(childComplexity int, infoHashes []protocol.ID, tagNames []string) int
@@ -457,6 +458,7 @@ type TorrentResolver interface {
 }
 type TorrentMutationResolver interface {
 	Delete(ctx context.Context, obj *gqlmodel.TorrentMutation, infoHashes []protocol.ID) (*string, error)
+	Archive(ctx context.Context, obj *gqlmodel.TorrentMutation, infoHashes []protocol.ID) (*string, error)
 	PutTags(ctx context.Context, obj *gqlmodel.TorrentMutation, infoHashes []protocol.ID, tagNames []string) (*string, error)
 	SetTags(ctx context.Context, obj *gqlmodel.TorrentMutation, infoHashes []protocol.ID, tagNames []string) (*string, error)
 	DeleteTags(ctx context.Context, obj *gqlmodel.TorrentMutation, infoHashes []protocol.ID, tagNames []string) (*string, error)
@@ -1802,6 +1804,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.TorrentMetricsQueryResult.Buckets(childComplexity), true
 
+	case "TorrentMutation.archive":
+		if e.complexity.TorrentMutation.Archive == nil {
+			break
+		}
+
+		args, err := ec.field_TorrentMutation_archive_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.TorrentMutation.Archive(childComplexity, args["infoHashes"].([]protocol.ID)), true
+
 	case "TorrentMutation.delete":
 		if e.complexity.TorrentMutation.Delete == nil {
 			break
@@ -2592,6 +2606,7 @@ type ContentCollection {
 
 type TorrentMutation {
   delete(infoHashes: [Hash20!]!): Void
+  archive(infoHashes: [Hash20!]!): Void
   putTags(infoHashes: [Hash20!]!, tagNames: [String!]!): Void
   setTags(infoHashes: [Hash20!]!, tagNames: [String!]!): Void
   deleteTags(infoHashes: [Hash20!], tagNames: [String!]): Void
@@ -3150,6 +3165,34 @@ func (ec *executionContext) field_TorrentContentQuery_search_argsInput(
 	}
 
 	var zeroVal gqlmodel.TorrentContentSearchQueryInput
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_TorrentMutation_archive_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_TorrentMutation_archive_argsInfoHashes(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["infoHashes"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_TorrentMutation_archive_argsInfoHashes(
+	ctx context.Context,
+	rawArgs map[string]any,
+) ([]protocol.ID, error) {
+	if _, ok := rawArgs["infoHashes"]; !ok {
+		var zeroVal []protocol.ID
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("infoHashes"))
+	if tmp, ok := rawArgs["infoHashes"]; ok {
+		return ec.unmarshalNHash202ᚕgithubᚗcomᚋbitmagnetᚑioᚋbitmagnetᚋinternalᚋprotocolᚐIDᚄ(ctx, tmp)
+	}
+
+	var zeroVal []protocol.ID
 	return zeroVal, nil
 }
 
@@ -6249,6 +6292,8 @@ func (ec *executionContext) fieldContext_Mutation_torrent(_ context.Context, fie
 			switch field.Name {
 			case "delete":
 				return ec.fieldContext_TorrentMutation_delete(ctx, field)
+			case "archive":
+				return ec.fieldContext_TorrentMutation_archive(ctx, field)
 			case "putTags":
 				return ec.fieldContext_TorrentMutation_putTags(ctx, field)
 			case "setTags":
@@ -12246,6 +12291,58 @@ func (ec *executionContext) fieldContext_TorrentMutation_delete(ctx context.Cont
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_TorrentMutation_delete_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TorrentMutation_archive(ctx context.Context, field graphql.CollectedField, obj *gqlmodel.TorrentMutation) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_TorrentMutation_archive(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.TorrentMutation().Archive(rctx, obj, fc.Args["infoHashes"].([]protocol.ID))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOVoid2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_TorrentMutation_archive(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TorrentMutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Void does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_TorrentMutation_archive_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -19458,6 +19555,39 @@ func (ec *executionContext) _TorrentMutation(ctx context.Context, sel ast.Select
 					}
 				}()
 				res = ec._TorrentMutation_delete(ctx, field, obj)
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "archive":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._TorrentMutation_archive(ctx, field, obj)
 				return res
 			}
 

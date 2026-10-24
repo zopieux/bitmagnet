@@ -6,6 +6,7 @@ import {
   setTorrentTags,
   deleteTorrentTags,
   deleteTorrents,
+  archiveTorrents,
   TorrentContentItem,
   TorrentFileItem,
   AggregationItem,
@@ -434,6 +435,12 @@ export const TorrentList: Component = () => {
     hashes: [],
   });
 
+  // Archive Confirmation State
+  const [archiveModal, setArchiveModal] = createSignal<{ open: boolean; hashes: string[] }>({
+    open: false,
+    hashes: [],
+  });
+
   const categories = [
     { value: 'movie', label: 'Movies' },
     { value: 'tv_show', label: 'TV Shows' },
@@ -534,6 +541,10 @@ export const TorrentList: Component = () => {
     }
   };
 
+  const deselectAll = () => {
+    setSelectedHashes([]);
+  };
+
   const toggleSelectRow = (hash: string) => {
     if (selectedHashes().includes(hash)) {
       setSelectedHashes(selectedHashes().filter((h) => h !== hash));
@@ -585,6 +596,24 @@ export const TorrentList: Component = () => {
     }
   };
 
+  // Archive
+  const openArchiveModal = (hashes: string[]) => {
+    setArchiveModal({ open: true, hashes });
+  };
+
+  const confirmArchive = async () => {
+    const hashes = archiveModal().hashes;
+    if (hashes.length === 0) return;
+    try {
+      await archiveTorrents(hashes);
+      setArchiveModal({ open: false, hashes: [] });
+      setSelectedHashes(selectedHashes().filter((h) => !hashes.includes(h)));
+      fetchTorrents();
+    } catch (err: any) {
+      alert(`Archival failed: ${err.message}`);
+    }
+  };
+
   const totalPages = () => Math.ceil(totalCount() / limit()) || 1;
 
   return (
@@ -619,11 +648,16 @@ export const TorrentList: Component = () => {
 
       {/* Batch Action Bar */}
       <Show when={selectedHashes().length > 0}>
-        <div style={{ padding: '0.6rem 1rem', 'margin-bottom': '1rem', display: 'flex', 'align-items': 'center', 'justify-content': 'space-between', background: '#ffffff', border: '1px solid var(--app-border)', 'border-radius': 'var(--app-radius)' }}>
-          <span style={{ 'font-size': '0.85rem' }}>
-            <strong>{selectedHashes().length}</strong> item(s) selected
-          </span>
-          <div style={{ display: 'flex', gap: '0.4rem' }}>
+        <div style={{ padding: '0.6rem 1rem', 'margin-bottom': '1rem', display: 'flex', 'align-items': 'center', 'justify-content': 'space-between', background: '#ffffff', border: '1px solid var(--app-border)', 'border-radius': 'var(--app-radius)', 'flex-wrap': 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', 'align-items': 'center', gap: '0.5rem' }}>
+            <span style={{ 'font-size': '0.85rem' }}>
+              <strong>{selectedHashes().length}</strong> item(s) selected
+            </span>
+            <button class="nav-btn" onClick={deselectAll}>
+              Deselect all
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: '0.4rem', 'flex-wrap': 'wrap' }}>
             <button class="nav-btn" onClick={() => openTagModal('add', selectedHashes())}>
               + Add Tags
             </button>
@@ -632,6 +666,9 @@ export const TorrentList: Component = () => {
             </button>
             <button class="nav-btn" onClick={() => openTagModal('remove', selectedHashes())}>
               - Remove Tags
+            </button>
+            <button class="nav-btn" onClick={() => openArchiveModal(selectedHashes())}>
+              Archive Selected
             </button>
             <button class="nav-btn danger" onClick={() => openDeleteModal(selectedHashes())} style={{ color: '#dc2626' }}>
               Delete Selected
@@ -1000,6 +1037,28 @@ export const TorrentList: Component = () => {
               </button>
               <button class="nav-btn danger" onClick={confirmDelete} style={{ background: '#dc2626', color: '#ffffff' }}>
                 Delete Permanently
+              </button>
+            </footer>
+          </article>
+        </dialog>
+      </Show>
+
+      {/* Archive Modal */}
+      <Show when={archiveModal().open}>
+        <dialog open>
+          <article style={{ 'max-width': '420px', width: '100%', padding: '1.25rem' }}>
+            <header>
+              <h5 style={{ margin: 0, 'font-size': '1rem' }}>Confirm Archival</h5>
+            </header>
+            <p style={{ 'font-size': '0.88rem', margin: '0.75rem 0' }}>
+              Are you sure you want to archive <strong>{archiveModal().hashes.length}</strong> torrent(s)? Metadata will be moved to cold storage.
+            </p>
+            <footer style={{ display: 'flex', 'justify-content': 'flex-end', gap: '0.5rem' }}>
+              <button class="nav-btn" onClick={() => setArchiveModal({ open: false, hashes: [] })}>
+                Cancel
+              </button>
+              <button class="nav-btn active" onClick={confirmArchive}>
+                Archive
               </button>
             </footer>
           </article>

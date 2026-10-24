@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bitmagnet-io/bitmagnet/internal/archive"
 	"github.com/bitmagnet-io/bitmagnet/internal/bloom"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol"
 )
@@ -18,17 +19,29 @@ import (
 type Manager interface {
 	Filter(ctx context.Context, hashes []protocol.ID) ([]protocol.ID, error)
 	Block(ctx context.Context, hashes []protocol.ID, flush bool) error
+	Archive(ctx context.Context, hashes []protocol.ID) error
 	Flush(ctx context.Context) error
 }
 
 type manager struct {
 	mutex         sync.Mutex
 	db            *sql.DB
+	archivePath   string
 	buffer        map[protocol.ID]struct{}
 	filter        *bloom.StableBloomFilter
 	maxBufferSize int
 	lastFlushedAt time.Time
 	maxFlushWait  time.Duration
+}
+
+func NewManager(db *sql.DB, archivePath string, maxFlushWait time.Duration) Manager {
+	return &manager{
+		db:            db,
+		archivePath:   archivePath,
+		buffer:        make(map[protocol.ID]struct{}, 1000),
+		maxBufferSize: 1000,
+		maxFlushWait:  maxFlushWait,
+	}
 }
 
 func (m *manager) Filter(ctx context.Context, hashes []protocol.ID) ([]protocol.ID, error) {
@@ -79,6 +92,23 @@ func (m *manager) Block(ctx context.Context, hashes []protocol.ID, flush bool) e
 	}
 
 	return nil
+}
+
+func (m *manager) Archive(ctx context.Context, hashes []protocol.ID) error {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	if m.archivePath != "" {
+		if err := archive.CopyToArchive(ctx, m.db, m.archivePath, hashes); err != nil {
+			return err
+		}
+	}
+
+	for _, hash := range hashes {
+		m.buffer[hash] = struct{}{}
+	}
+
+	return m.flush(ctx)
 }
 
 func (m *manager) Flush(ctx context.Context) error {

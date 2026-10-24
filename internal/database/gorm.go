@@ -15,7 +15,7 @@ import (
 
 type Params struct {
 	fx.In
-	SQLDB  lazy.Lazy[*sql.DB]
+	DB     lazy.Lazy[*sql.DB]
 	Logger *zap.SugaredLogger
 }
 
@@ -27,7 +27,7 @@ type Result struct {
 func New(p Params) Result {
 	return Result{
 		GormDB: lazy.New(func() (*gorm.DB, error) {
-			sqlDB, err := p.SQLDB.Get()
+			sqlDB, err := p.DB.Get()
 			if err != nil {
 				return nil, err
 			}

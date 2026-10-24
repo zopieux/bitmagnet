@@ -468,8 +468,12 @@ export const TorrentList: Component = () => {
       setItems(res.items || []);
       setTotalCount(res.totalCount || 0);
       setHasNextPage(!!res.hasNextPage);
-      setCategoryAggs(res.aggregations?.contentType || []);
-      setTagAggs(res.aggregations?.torrentTag || []);
+      if (res.aggregations?.contentType && res.aggregations.contentType.length > 0) {
+        setCategoryAggs(res.aggregations.contentType);
+      }
+      if (res.aggregations?.torrentTag && res.aggregations.torrentTag.length > 0) {
+        setTagAggs(res.aggregations.torrentTag);
+      }
     } catch (e: any) {
       setError(e.message || 'Error loading torrents');
     } finally {

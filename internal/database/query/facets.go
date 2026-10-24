@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
+	"time"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/database/dao"
 	"github.com/bitmagnet-io/bitmagnet/internal/maps"
@@ -31,6 +33,11 @@ type Facet interface {
 type GroupedFacet interface {
 	Facet
 	GroupColumn(ctx DBContext) (field.Field, error)
+}
+
+type CustomAggregator interface {
+	Facet
+	Aggregate(ctx FacetContext, values map[string]string) (AggregationItems, error)
 }
 
 type FacetFilter map[string]struct{}
@@ -93,6 +100,8 @@ type FacetContext interface {
 	DBContext
 	Context() context.Context
 	NewAggregationQuery(options ...Option) (SubQuery, error)
+	HasFilter() bool
+	OptionBuilder() OptionBuilder
 }
 
 type facetContext struct {
@@ -130,6 +139,14 @@ func (ctx facetContext) NewAggregationQuery(options ...Option) (SubQuery, error)
 	}
 
 	return sq, nil
+}
+
+func (ctx facetContext) HasFilter() bool {
+	return ctx.optionBuilder.HasFilter()
+}
+
+func (ctx facetContext) OptionBuilder() OptionBuilder {
+	return ctx.optionBuilder
 }
 
 func FacetHasKey(key string) FacetOption {
@@ -237,11 +254,24 @@ func (b optionBuilder) createFacetsFilterCriteria() (c Criteria, err error) {
 }
 
 // when aggregating with or logic the current facet's filter should be ignored
-func withCurrentFacet(facetKey string) Option {
+// when aggregating with or logic the current facet's filter should be ignored
+func WithCurrentFacet(facetKey string) Option {
 	return func(b OptionBuilder) (OptionBuilder, error) {
 		return b.withCurrentFacet(facetKey), nil
 	}
 }
+
+var withCurrentFacet = WithCurrentFacet
+
+type facetCacheEntry struct {
+	items     AggregationItems
+	expiresAt time.Time
+}
+
+var (
+	unfilteredFacetMu    sync.RWMutex
+	unfilteredFacetCache = make(map[string]facetCacheEntry)
+)
 
 func (b optionBuilder) calculateAggregations(ctx context.Context) (Aggregations, error) {
 	aggregations := make(Aggregations, len(b.facets))
@@ -251,6 +281,26 @@ func (b optionBuilder) calculateAggregations(ctx context.Context) (Aggregations,
 		if !facet.IsAggregated() {
 			continue
 		}
+
+		if !b.HasFilter() {
+			cacheKey := b.TableName() + ":" + facet.Key()
+			unfilteredFacetMu.RLock()
+			entry, ok := unfilteredFacetCache[cacheKey]
+			unfilteredFacetMu.RUnlock()
+			if ok && time.Now().Before(entry.expiresAt) {
+				copiedItems := make(AggregationItems, len(entry.items))
+				for k, v := range entry.items {
+					copiedItems[k] = v
+				}
+				aggregations[facet.Key()] = AggregationGroup{
+					Label: facet.Label(),
+					Logic: facet.Logic(),
+					Items: copiedItems,
+				}
+				continue
+			}
+		}
+
 		values, valuesErr := facet.Values(facetContext{
 			optionBuilder: b,
 			ctx:           ctx,
@@ -263,6 +313,37 @@ func (b optionBuilder) calculateAggregations(ctx context.Context) (Aggregations,
 		}
 		filter := facet.Filter()
 		items := make(AggregationItems, len(values))
+
+		if customAgg, ok := facet.(CustomAggregator); ok {
+			var aggErr error
+			items, aggErr = customAgg.Aggregate(facetContext{
+				optionBuilder: b,
+				ctx:           ctx,
+			}, values)
+			if aggErr != nil {
+				errs = append(errs, fmt.Errorf("failed to aggregate custom facet '%s': %w", facet.Key(), aggErr))
+				continue
+			}
+			if !b.HasFilter() {
+				cacheKey := b.TableName() + ":" + facet.Key()
+				copiedItems := make(AggregationItems, len(items))
+				for k, v := range items {
+					copiedItems[k] = v
+				}
+				unfilteredFacetMu.Lock()
+				unfilteredFacetCache[cacheKey] = facetCacheEntry{
+					items:     copiedItems,
+					expiresAt: time.Now().Add(60 * time.Second),
+				}
+				unfilteredFacetMu.Unlock()
+			}
+			aggregations[facet.Key()] = AggregationGroup{
+				Label: facet.Label(),
+				Logic: facet.Logic(),
+				Items: items,
+			}
+			continue
+		}
 
 		if groupedFacet, ok := facet.(GroupedFacet); ok {
 			fld, colErr := groupedFacet.GroupColumn(b)
@@ -323,6 +404,19 @@ func (b optionBuilder) calculateAggregations(ctx context.Context) (Aggregations,
 						}
 					}
 				}
+			}
+			if !b.HasFilter() {
+				cacheKey := b.TableName() + ":" + facet.Key()
+				copiedItems := make(AggregationItems, len(items))
+				for k, v := range items {
+					copiedItems[k] = v
+				}
+				unfilteredFacetMu.Lock()
+				unfilteredFacetCache[cacheKey] = facetCacheEntry{
+					items:     copiedItems,
+					expiresAt: time.Now().Add(60 * time.Second),
+				}
+				unfilteredFacetMu.Unlock()
 			}
 			aggregations[facet.Key()] = AggregationGroup{
 				Label: facet.Label(),

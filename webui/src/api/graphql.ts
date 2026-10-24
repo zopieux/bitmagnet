@@ -112,12 +112,14 @@ export interface SearchOptions {
   contentTypes?: string[];
   tags?: string[];
   orderBy?: { field: string; descending: boolean };
+  aggregate?: boolean;
 }
 
 export async function searchTorrents(options: SearchOptions): Promise<TorrentSearchResult> {
+  const shouldAggregate = options.aggregate ?? (options.page === undefined || options.page <= 1);
   const facets: Record<string, any> = {
-    contentType: { aggregate: true },
-    torrentTag: { aggregate: true },
+    contentType: { aggregate: shouldAggregate },
+    torrentTag: { aggregate: shouldAggregate },
   };
 
   if (options.contentTypes && options.contentTypes.length > 0) {

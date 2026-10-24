@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/database/dao"
 	"github.com/bitmagnet-io/bitmagnet/internal/database/fts"
@@ -98,8 +99,29 @@ func (gq *genericQuery[_]) addError(err error) {
 	gq.errs = append(gq.errs, err)
 }
 
+type countCacheEntry struct {
+	count     uint
+	expiresAt time.Time
+}
+
+var (
+	unfilteredCountMu    sync.RWMutex
+	unfilteredCountCache = make(map[string]countCacheEntry)
+)
+
 func (gq *genericQuery[_]) doCount() {
 	if gq.builder.withTotalCount() {
+		if !gq.builder.HasFilter() {
+			unfilteredCountMu.RLock()
+			entry, ok := unfilteredCountCache[gq.builder.TableName()]
+			unfilteredCountMu.RUnlock()
+			if ok && time.Now().Before(entry.expiresAt) {
+				gq.result.TotalCount = entry.count
+				gq.result.TotalCountIsEstimate = false
+				return
+			}
+		}
+
 		sq, sqErr := gq.newSubQuery(gq.ctx, false)
 		if sqErr != nil {
 			gq.addError(sqErr)
@@ -112,6 +134,14 @@ func (gq *genericQuery[_]) doCount() {
 		} else {
 			gq.result.TotalCount = uint(count)
 			gq.result.TotalCountIsEstimate = false
+			if !gq.builder.HasFilter() {
+				unfilteredCountMu.Lock()
+				unfilteredCountCache[gq.builder.TableName()] = countCacheEntry{
+					count:     uint(count),
+					expiresAt: time.Now().Add(60 * time.Second),
+				}
+				unfilteredCountMu.Unlock()
+			}
 		}
 	}
 }
@@ -266,6 +296,7 @@ type OptionBuilder interface {
 	hasNextPage(nItems int) bool
 	withCurrentFacet(string) OptionBuilder
 	createContext(context.Context) context.Context
+	HasFilter() bool
 }
 
 type optionBuilder struct {
@@ -464,6 +495,18 @@ func (b optionBuilder) createContext(ctx context.Context) context.Context {
 	}
 
 	return ctx
+}
+
+func (b optionBuilder) HasFilter() bool {
+	if b.ftsQuery != "" || len(b.scopes) > 0 {
+		return true
+	}
+	for _, f := range b.facets {
+		if len(f.Filter()) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (b optionBuilder) applySelect(db *gorm.DB, withOrderSelect bool) error {

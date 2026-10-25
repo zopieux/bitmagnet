@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/99designs/gqlgen/graphql"
-	"github.com/bitmagnet-io/bitmagnet/internal/metrics/queuemetrics"
-	"github.com/bitmagnet-io/bitmagnet/internal/metrics/torrentmetrics"
 	"github.com/bitmagnet-io/bitmagnet/internal/model"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol"
 )
@@ -107,18 +105,6 @@ type QueueJobsOrderByInput struct {
 	Descending graphql.Omittable[*bool] `json:"descending,omitempty"`
 }
 
-type QueueMetricsQueryInput struct {
-	BucketDuration MetricsBucketDuration                     `json:"bucketDuration"`
-	Statuses       graphql.Omittable[[]model.QueueJobStatus] `json:"statuses,omitempty"`
-	Queues         graphql.Omittable[[]string]               `json:"queues,omitempty"`
-	StartTime      graphql.Omittable[*time.Time]             `json:"startTime,omitempty"`
-	EndTime        graphql.Omittable[*time.Time]             `json:"endTime,omitempty"`
-}
-
-type QueueMetricsQueryResult struct {
-	Buckets []queuemetrics.Bucket `json:"buckets"`
-}
-
 type ReleaseYearAgg struct {
 	Value      *model.Year `json:"value,omitempty"`
 	Label      string      `json:"label"`
@@ -185,17 +171,6 @@ type TorrentFilesOrderByInput struct {
 
 type TorrentListSourcesResult struct {
 	Sources []model.TorrentSource `json:"sources"`
-}
-
-type TorrentMetricsQueryInput struct {
-	BucketDuration MetricsBucketDuration         `json:"bucketDuration"`
-	Sources        graphql.Omittable[[]string]   `json:"sources,omitempty"`
-	StartTime      graphql.Omittable[*time.Time] `json:"startTime,omitempty"`
-	EndTime        graphql.Omittable[*time.Time] `json:"endTime,omitempty"`
-}
-
-type TorrentMetricsQueryResult struct {
-	Buckets []torrentmetrics.Bucket `json:"buckets"`
 }
 
 type TorrentReprocessInput struct {
@@ -311,49 +286,6 @@ func (e *HealthStatus) UnmarshalGQL(v any) error {
 }
 
 func (e HealthStatus) MarshalGQL(w io.Writer) {
-	fmt.Fprint(w, strconv.Quote(e.String()))
-}
-
-type MetricsBucketDuration string
-
-const (
-	MetricsBucketDurationMinute MetricsBucketDuration = "minute"
-	MetricsBucketDurationHour   MetricsBucketDuration = "hour"
-	MetricsBucketDurationDay    MetricsBucketDuration = "day"
-)
-
-var AllMetricsBucketDuration = []MetricsBucketDuration{
-	MetricsBucketDurationMinute,
-	MetricsBucketDurationHour,
-	MetricsBucketDurationDay,
-}
-
-func (e MetricsBucketDuration) IsValid() bool {
-	switch e {
-	case MetricsBucketDurationMinute, MetricsBucketDurationHour, MetricsBucketDurationDay:
-		return true
-	}
-	return false
-}
-
-func (e MetricsBucketDuration) String() string {
-	return string(e)
-}
-
-func (e *MetricsBucketDuration) UnmarshalGQL(v any) error {
-	str, ok := v.(string)
-	if !ok {
-		return fmt.Errorf("enums must be strings")
-	}
-
-	*e = MetricsBucketDuration(str)
-	if !e.IsValid() {
-		return fmt.Errorf("%s is not a valid MetricsBucketDuration", str)
-	}
-	return nil
-}
-
-func (e MetricsBucketDuration) MarshalGQL(w io.Writer) {
 	fmt.Fprint(w, strconv.Quote(e.String()))
 }
 

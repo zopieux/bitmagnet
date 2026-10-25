@@ -207,12 +207,12 @@
           "editorMode": "code",
           "expr": "rate(bitmagnet_dht_crawler_persisted_total[$__rate_interval])*60",
           "instant": false,
-          "legendFormat": "{{entity}}",
+          "legendFormat": "{{entity}} ({{action}})",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "DHT crawler torrents persisted per minute",
+      "title": "Torrents & sources persisted per minute",
       "type": "timeseries"
     },
     {
@@ -309,6 +309,101 @@
         }
       ],
       "title": "Queue jobs count",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 20,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "bitmagnet_queue_jobs_active",
+          "instant": false,
+          "legendFormat": "{{queue}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Queue active jobs",
       "type": "timeseries"
     },
     {
@@ -1141,6 +1236,7 @@
               }
             ]
           },
+          "unit": "s",
           "unitScale": true
         },
         "overrides": []
@@ -1171,14 +1267,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(bitmagnet_classifier_success_total[$__rate_interval])*60",
+          "expr": "histogram_quantile(0.5, bitmagnet_queue_job_wait_duration_seconds_bucket)",
           "instant": false,
-          "legendFormat": "__auto",
+          "legendFormat": "{{queue}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Classifier success",
+      "title": "Queue wait latency",
       "type": "timeseries"
     },
     {
@@ -1237,6 +1333,7 @@
               }
             ]
           },
+          "unit": "s",
           "unitScale": true
         },
         "overrides": []
@@ -1267,14 +1364,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.5, bitmagnet_classifier_duration_seconds_bucket)",
-          "key": "Q-f3ef703c-7424-4114-840d-3ca86bbaecfa-0",
-          "legendFormat": "__auto",
+          "expr": "histogram_quantile(0.5, bitmagnet_queue_job_duration_seconds_bucket)",
+          "legendFormat": "{{queue}}:{{status}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Classifier latency",
+      "title": "Queue execution latency",
       "type": "timeseries"
     },
     {

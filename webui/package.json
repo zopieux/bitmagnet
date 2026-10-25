@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@picocss/pico": "^2.0.6",
-    "chart.js": "^4.5.1",
     "solid-js": "^1.8.15"
   },
   "devDependencies": {

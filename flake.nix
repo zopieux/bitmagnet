@@ -21,7 +21,7 @@
           pname = "bitmagnet-webui";
           version = "0.0.0";
           src = ./webui;
-          npmDepsHash = "sha256-zXoW0ao+CvJsykmhGgM9mS1YVPX/Mgqs/iyp86EOuFU=";
+          npmDepsHash = "sha256-fJbL1/MByofnZNIM9nLoobIMNbxfmeCGDLIxxymMb7w=";
           installPhase = ''
             runHook preInstall
             mkdir -p $out/share/bitmagnet-webui

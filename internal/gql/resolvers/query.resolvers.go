@@ -86,15 +86,14 @@ func (r *queryResolver) Health(ctx context.Context) (gen.HealthQuery, error) {
 
 // Queue is the resolver for the queue field.
 func (r *queryResolver) Queue(ctx context.Context) (gqlmodel.QueueQuery, error) {
-	return gqlmodel.QueueQuery{QueueMetricsClient: r.QueueMetricsClient}, nil
+	return gqlmodel.QueueQuery{}, nil
 }
 
 // Torrent is the resolver for the torrent field.
 func (r *queryResolver) Torrent(ctx context.Context) (gqlmodel.TorrentQuery, error) {
 	return gqlmodel.TorrentQuery{
-		Dao:                  r.Dao,
-		Search:               r.Search,
-		TorrentMetricsClient: r.TorrentMetricsClient,
+		Dao:    r.Dao,
+		Search: r.Search,
 	}, nil
 }
 

@@ -60,7 +60,7 @@ func New(params Params) Result {
 		Subsystem: "dht_crawler",
 		Name:      "persisted_total",
 		Help:      "A counter of persisted database entities.",
-	}, []string{"entity"})
+	}, []string{"entity", "action"})
 
 	stageDepth := newStageDepthCollector()
 

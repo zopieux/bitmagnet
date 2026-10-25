@@ -8,6 +8,7 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/gql/gqlmodel/gen"
 	"github.com/bitmagnet-io/bitmagnet/internal/maps"
 	"github.com/bitmagnet-io/bitmagnet/internal/model"
+	"github.com/bitmagnet-io/bitmagnet/internal/queue/manager"
 )
 
 type QueueJobsQueryInput struct {
@@ -138,4 +139,25 @@ func transformQueueJobsAggregations(aggs q.Aggregations) (gen.QueueJobsAggregati
 	}
 
 	return a, nil
+}
+
+type QueueQuery struct {
+	QueueJobSearch search.QueueJobSearch
+}
+
+type QueueMutation struct {
+	QueueManager manager.Manager
+}
+
+func (m *QueueMutation) PurgeJobs(ctx context.Context, input manager.PurgeJobsRequest) (*string, error) {
+	err := m.QueueManager.PurgeJobs(ctx, input)
+	return nil, err
+}
+
+func (m *QueueMutation) EnqueueReprocessTorrentsBatch(
+	ctx context.Context,
+	input manager.EnqueueReprocessTorrentsBatchRequest,
+) (*string, error) {
+	err := m.QueueManager.EnqueueReprocessTorrentsBatch(ctx, input)
+	return nil, err
 }

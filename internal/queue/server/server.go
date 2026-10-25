@@ -214,7 +214,10 @@ func (h *serverHandler) handleJob(
 		return "", false, nil
 	}
 
-	var job *model.QueueJob
+	var (
+		job              *model.QueueJob
+		originalRunAfter time.Time
+	)
 	err = h.query.Transaction(func(tx *dao.Query) error {
 		var findErr error
 		job, findErr = findJob(tx)
@@ -227,6 +230,7 @@ func (h *serverHandler) handleJob(
 		}
 
 		jobID = job.ID
+		originalRunAfter = job.RunAfter
 		// Push RunAfter far into the future so a concurrent claim (or a
 		// crash between claim and status update) doesn't pick up the same job.
 		job.RunAfter = time.Now().Add(time.Hour)
@@ -238,6 +242,15 @@ func (h *serverHandler) handleJob(
 	})
 	if err != nil || job == nil {
 		return jobID, false, err
+	}
+
+	if h.metrics != nil {
+		h.metrics.JobStarted(h.Queue)
+	}
+	execStart := time.Now()
+	waitDuration := time.Since(originalRunAfter)
+	if waitDuration < 0 {
+		waitDuration = 0
 	}
 
 	var jobErr error
@@ -273,7 +286,7 @@ func (h *serverHandler) handleJob(
 	}
 
 	if h.metrics != nil {
-		h.metrics.Inc(h.Queue, job.Status)
+		h.metrics.JobFinished(h.Queue, job.Status, waitDuration, time.Since(execStart))
 	}
 
 	err = h.query.Transaction(func(tx *dao.Query) error {

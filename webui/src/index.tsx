@@ -1,12 +1,9 @@
 import { render } from 'solid-js/web';
-import { createSignal } from 'solid-js';
 import '@picocss/pico';
 import { TorrentList } from './components/TorrentList';
-import { AdminDashboard } from './components/AdminDashboard';
 import { MagnetIcon } from './components/MagnetIcon';
 
 const App = () => {
-  const [tab, setTab] = createSignal<'torrents' | 'admin'>('torrents');
 
   return (
     <div class="app-wrapper">
@@ -60,11 +57,6 @@ const App = () => {
           flex-direction: column;
         }
 
-        .dashboard-root {
-          flex: 1;
-          min-height: 0;
-          overflow-y: auto;
-        }
 
         .expanded-row-toolbar {
           display: flex;
@@ -204,10 +196,6 @@ const App = () => {
           box-sizing: border-box !important;
         }
 
-        /* Dashboard cards: flat design, no Pico card shadow */
-        .dashboard-root article {
-          box-shadow: none;
-        }
 
         /* Compact Table Styling */
         table.compact-table {
@@ -490,35 +478,14 @@ const App = () => {
       `}</style>
 
       <header class="app-header">
-        <a href="#" class="brand-logo" onClick={() => setTab('torrents')}>
+        <a href="#" class="brand-logo">
           <MagnetIcon size={22} color="var(--pico-primary)" strokeWidth={10} />
           <span>Bitmagnet</span>
         </a>
-
-        <nav>
-          <ul class="nav-tabs">
-            <li>
-              <button
-                class={`nav-btn ${tab() === 'torrents' ? 'active' : ''}`}
-                onClick={() => setTab('torrents')}
-              >
-                Torrents
-              </button>
-            </li>
-            <li>
-              <button
-                class={`nav-btn ${tab() === 'admin' ? 'active' : ''}`}
-                onClick={() => setTab('admin')}
-              >
-                Dashboard
-              </button>
-            </li>
-          </ul>
-        </nav>
       </header>
 
       <main>
-        {tab() === 'torrents' ? <TorrentList /> : <AdminDashboard />}
+        <TorrentList />
       </main>
     </div>
   );

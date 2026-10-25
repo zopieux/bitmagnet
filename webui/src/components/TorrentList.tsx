@@ -823,7 +823,7 @@ export const TorrentList: Component = () => {
       </Show>
 
       {/* Main Layout Grid */}
-      <div class="grid-container" style={{ display: 'grid', 'grid-template-columns': '220px 1fr', 'grid-template-rows': 'minmax(0, 1fr)', gap: '1.25rem', flex: '1', 'min-height': '0' }}>
+      <div class="grid-container" style={{ display: 'grid', 'grid-template-columns': '140px 1fr', 'grid-template-rows': 'minmax(0, 1fr)', gap: '1.25rem', flex: '1', 'min-height': '0' }}>
         {/* Sidebar Filter Pane */}
         <aside class={`desktop-sidebar ${mobileFilterOpen() ? 'mobile-open' : ''}`}>
           <Show when={mobileFilterOpen()}>
@@ -1001,7 +1001,7 @@ export const TorrentList: Component = () => {
                         didLongPress = true;
                         toggleSelectRow(hash);
                         if ('vibrate' in navigator) {
-                          try { navigator.vibrate(50); } catch (_) {}
+                          try { navigator.vibrate(50); } catch (_) { }
                         }
                       }, 500);
                     };

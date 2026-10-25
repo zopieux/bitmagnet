@@ -11,8 +11,6 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/gql/resolvers"
 	"github.com/bitmagnet-io/bitmagnet/internal/health"
 	"github.com/bitmagnet-io/bitmagnet/internal/lazy"
-	"github.com/bitmagnet-io/bitmagnet/internal/metrics/queuemetrics"
-	"github.com/bitmagnet-io/bitmagnet/internal/metrics/torrentmetrics"
 	"github.com/bitmagnet-io/bitmagnet/internal/processor"
 	"github.com/bitmagnet-io/bitmagnet/internal/queue/manager"
 	"github.com/bitmagnet-io/bitmagnet/internal/worker"
@@ -54,15 +52,7 @@ func New() fx.Option {
 						if err != nil {
 							return nil, err
 						}
-						qmc, err := p.QueueMetricsClient.Get()
-						if err != nil {
-							return nil, err
-						}
 						qm, err := p.QueueManager.Get()
-						if err != nil {
-							return nil, err
-						}
-						tm, err := p.TorrentMetricsClient.Get()
 						if err != nil {
 							return nil, err
 						}
@@ -75,14 +65,12 @@ func New() fx.Option {
 							return nil, err
 						}
 						return &resolvers.Resolver{
-							Dao:                  d,
-							Search:               s,
-							Checker:              ch,
-							QueueMetricsClient:   qmc,
-							QueueManager:         qm,
-							TorrentMetricsClient: tm,
-							Processor:            pr,
-							BlockingManager:      bm,
+							Dao:             d,
+							Search:          s,
+							Checker:         ch,
+							QueueManager:    qm,
+							Processor:       pr,
+							BlockingManager: bm,
 						}, nil
 					}),
 				}
@@ -105,12 +93,10 @@ type Params struct {
 	fx.In
 	Search               lazy.Lazy[search.Search]
 	Dao                  lazy.Lazy[*dao.Query]
-	Checker              lazy.Lazy[health.Checker]
-	QueueMetricsClient   lazy.Lazy[queuemetrics.Client]
-	QueueManager         lazy.Lazy[manager.Manager]
-	TorrentMetricsClient lazy.Lazy[torrentmetrics.Client]
-	Processor            lazy.Lazy[processor.Processor]
-	BlockingManager      lazy.Lazy[blocking.Manager]
+	Checker         lazy.Lazy[health.Checker]
+	QueueManager    lazy.Lazy[manager.Manager]
+	Processor       lazy.Lazy[processor.Processor]
+	BlockingManager lazy.Lazy[blocking.Manager]
 }
 
 type Result struct {

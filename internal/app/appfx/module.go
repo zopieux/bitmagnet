@@ -18,7 +18,6 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/httpserver/httpserverfx"
 	"github.com/bitmagnet-io/bitmagnet/internal/importer/importerfx"
 	"github.com/bitmagnet-io/bitmagnet/internal/logging/loggingfx"
-	"github.com/bitmagnet-io/bitmagnet/internal/metrics/metricsfx"
 	"github.com/bitmagnet-io/bitmagnet/internal/processor/processorfx"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht/dhtfx"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo/metainfofx"
@@ -47,7 +46,6 @@ func New() fx.Option {
 		importerfx.New(),
 		loggingfx.New(),
 		metainfofx.New(),
-		metricsfx.New(),
 		processorfx.New(),
 		queuefx.New(),
 		telemetryfx.New(),

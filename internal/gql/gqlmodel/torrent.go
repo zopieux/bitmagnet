@@ -6,14 +6,12 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/database/dao"
 	"github.com/bitmagnet-io/bitmagnet/internal/database/search"
 	"github.com/bitmagnet-io/bitmagnet/internal/gql/gqlmodel/gen"
-	"github.com/bitmagnet-io/bitmagnet/internal/metrics/torrentmetrics"
 	"github.com/bitmagnet-io/bitmagnet/internal/model"
 )
 
 type TorrentQuery struct {
-	Dao                  *dao.Query
-	Search               search.Search
-	TorrentMetricsClient torrentmetrics.Client
+	Dao    *dao.Query
+	Search search.Search
 }
 
 func (t TorrentQuery) SuggestTags(

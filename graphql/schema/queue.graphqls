@@ -1,6 +1,5 @@
 type QueueQuery {
   jobs(input: QueueJobsQueryInput!): QueueJobsQueryResult!
-  metrics(input: QueueMetricsQueryInput!): QueueMetricsQueryResult!
 }
 
 input QueueJobsQueryInput {

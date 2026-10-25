@@ -443,6 +443,23 @@ function parseUrlState() {
   return { q, page, perPage, categories, tags, sort };
 }
 
+const MOBILE_COLS_STORAGE_KEY = 'bitmagnet_mobile_columns';
+
+const loadInitialMobileCols = (): Set<ColumnKey> => {
+  try {
+    const saved = localStorage.getItem(MOBILE_COLS_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        const validKeys = new Set<string>(TOGGLABLE_COLUMNS.map((c) => c.key));
+        const filtered = parsed.filter((k): k is ColumnKey => validKeys.has(k));
+        return new Set(filtered);
+      }
+    }
+  } catch (_) {}
+  return new Set(['size', 'magnet']);
+};
+
 export const TorrentList: Component = () => {
   const initial = parseUrlState();
   const [queryString, setQueryString] = createSignal(initial.q);
@@ -468,7 +485,7 @@ export const TorrentList: Component = () => {
   // Mobile Filter Pane State & Column Toggles
   const [mobileFilterOpen, setMobileFilterOpen] = createSignal(false);
   const [mobileVisibleCols, setMobileVisibleCols] = createSignal<Set<ColumnKey>>(
-    new Set(['size', 'magnet'])
+    loadInitialMobileCols()
   );
   const toggleCol = (key: ColumnKey) => {
     setMobileVisibleCols((prev) => {
@@ -478,6 +495,9 @@ export const TorrentList: Component = () => {
       } else {
         next.add(key);
       }
+      try {
+        localStorage.setItem(MOBILE_COLS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      } catch (_) { }
       return next;
     });
   };

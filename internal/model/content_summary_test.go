@@ -71,7 +71,7 @@ func TestContentSummary_SingleFileSummary(t *testing.T) {
 
 	rawJSON, err := json.Marshal(s)
 	require.NoError(t, err)
-	require.Contains(t, jsonStr(rawJSON), `"filesCount":1`)
+	require.Contains(t, jsonStr(rawJSON), `"maxDepth":0`)
 	require.NotContains(t, jsonStr(rawJSON), `"otherExtensions"`)
 }
 

@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/blocking"
 	"github.com/bitmagnet-io/bitmagnet/internal/database/dao"
@@ -60,6 +61,36 @@ func (h *ClassificationHandler) RegisterRoutes(e *gin.Engine) {
 	}
 }
 
+type ClassificationBatchItem struct {
+	ID              string                 `json:"id"`
+	InfoHash        protocol.ID            `json:"infoHash"`
+	Name            string                 `json:"name"`
+	Size            uint64                 `json:"size"`
+	FilesCount      uint                   `json:"filesCount"`
+	FilesStatus     model.FilesStatus      `json:"filesStatus"`
+	ContentType     *model.ContentType     `json:"contentType,omitempty"`
+	FilesSummary    *model.ContentSummary  `json:"filesSummary,omitempty"`
+	Files           []ClassificationFile   `json:"files,omitempty"`
+	Tags            []string               `json:"tags,omitempty"`
+	VideoResolution *model.VideoResolution `json:"videoResolution,omitempty"`
+	VideoCodec      *model.VideoCodec      `json:"videoCodec,omitempty"`
+	ReleaseGroup    *string                `json:"releaseGroup,omitempty"`
+	Episodes        model.Episodes         `json:"episodes,omitempty"`
+	Languages       model.Languages        `json:"languages,omitempty"`
+	Seeders         uint                   `json:"seeders"`
+	Leechers        uint                   `json:"leechers"`
+	PublishedAt     *time.Time             `json:"publishedAt,omitempty"`
+	CreatedAt       time.Time              `json:"createdAt"`
+	UpdatedAt       time.Time              `json:"updatedAt"`
+}
+
+type ClassificationFile struct {
+	Index     uint    `json:"index"`
+	Path      string  `json:"path"`
+	Extension *string `json:"extension,omitempty"`
+	Size      uint64  `json:"size"`
+}
+
 func (h *ClassificationHandler) GetBatch(c *gin.Context) {
 	tag := c.Query("tag")
 	excludeTag := c.Query("exclude_tag")
@@ -93,26 +124,113 @@ func (h *ClassificationHandler) GetBatch(c *gin.Context) {
 		return
 	}
 
-	for i := range results {
-		if len(results[i].Torrent.Files) == 0 && results[i].Torrent.Name != "" {
-			results[i].Torrent.Files = []model.TorrentFile{
+	items := make([]ClassificationBatchItem, len(results))
+	for i, tc := range results {
+		var contentType *model.ContentType
+		if tc.ContentType.Valid {
+			contentType = &tc.ContentType.ContentType
+		}
+
+		var filesCount uint
+		if tc.Torrent.FilesCount.Valid {
+			filesCount = tc.Torrent.FilesCount.Uint
+		} else if tc.Torrent.FilesStatus == model.FilesStatusSingle {
+			filesCount = 1
+		}
+
+		filesSummary := tc.Torrent.FilesSummary
+		if filesSummary == nil && tc.Torrent.FilesStatus == model.FilesStatusSingle && tc.Torrent.Name != "" {
+			s := model.NewSingleFileSummary(tc.Torrent.Name, uint64(tc.Torrent.Size), tc.Torrent.Extension.String)
+			filesSummary = &s
+		}
+
+		var files []ClassificationFile
+		if len(tc.Torrent.Files) > 0 {
+			files = make([]ClassificationFile, len(tc.Torrent.Files))
+			for j, f := range tc.Torrent.Files {
+				var ext *string
+				if f.Extension.Valid {
+					ext = &f.Extension.String
+				}
+				files[j] = ClassificationFile{
+					Index:     uint(f.Index),
+					Path:      f.Path,
+					Extension: ext,
+					Size:      uint64(f.Size),
+				}
+			}
+		} else if tc.Torrent.Name != "" {
+			var ext *string
+			if tc.Torrent.Extension.Valid {
+				ext = &tc.Torrent.Extension.String
+			}
+			files = []ClassificationFile{
 				{
-					InfoHash:  results[i].Torrent.InfoHash,
 					Index:     0,
-					Path:      results[i].Torrent.Name,
-					Extension: results[i].Torrent.Extension,
-					Size:      results[i].Torrent.Size,
+					Path:      tc.Torrent.Name,
+					Extension: ext,
+					Size:      uint64(tc.Torrent.Size),
 				},
 			}
 		}
-		if results[i].Torrent.FilesSummary == nil && results[i].Torrent.FilesStatus == model.FilesStatusSingle && results[i].Torrent.Name != "" {
-			s := model.NewSingleFileSummary(results[i].Torrent.Name, uint64(results[i].Torrent.Size), results[i].Torrent.Extension.String)
-			results[i].Torrent.FilesSummary = &s
+
+		var tags []string
+		if len(tc.Torrent.Tags) > 0 {
+			tags = make([]string, len(tc.Torrent.Tags))
+			for j, t := range tc.Torrent.Tags {
+				tags[j] = t.Name
+			}
+		}
+
+		var videoResolution *model.VideoResolution
+		if tc.VideoResolution.Valid {
+			videoResolution = &tc.VideoResolution.VideoResolution
+		}
+
+		var videoCodec *model.VideoCodec
+		if tc.VideoCodec.Valid {
+			videoCodec = &tc.VideoCodec.VideoCodec
+		}
+
+		var releaseGroup *string
+		if tc.ReleaseGroup.Valid {
+			releaseGroup = &tc.ReleaseGroup.String
+		}
+
+		seeders := tc.Torrent.Seeders().Uint
+		leechers := tc.Torrent.Leechers().Uint
+		pubAt := tc.Torrent.PublishedAt()
+		var publishedAt *time.Time
+		if !pubAt.IsZero() {
+			publishedAt = &pubAt
+		}
+
+		items[i] = ClassificationBatchItem{
+			ID:              tc.ID,
+			InfoHash:        tc.InfoHash,
+			Name:            tc.Torrent.Name,
+			Size:            uint64(tc.Torrent.Size),
+			FilesCount:      filesCount,
+			FilesStatus:     tc.Torrent.FilesStatus,
+			ContentType:     contentType,
+			FilesSummary:    filesSummary,
+			Files:           files,
+			Tags:            tags,
+			VideoResolution: videoResolution,
+			VideoCodec:      videoCodec,
+			ReleaseGroup:    releaseGroup,
+			Episodes:        tc.Episodes,
+			Languages:       tc.Languages,
+			Seeders:         seeders,
+			Leechers:        leechers,
+			PublishedAt:     publishedAt,
+			CreatedAt:       tc.CreatedAt,
+			UpdatedAt:       tc.UpdatedAt,
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"items": results,
+		"items": items,
 	})
 }
 

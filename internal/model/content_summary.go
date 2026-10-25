@@ -424,8 +424,6 @@ func (s *ContentSummary) Scan(value any) error {
 
 func (s ContentSummary) MarshalJSON() ([]byte, error) {
 	out := struct {
-		FilesCount      uint64            `json:"filesCount"`
-		TotalSize       uint64            `json:"totalSize"`
 		MaxDepth        uint8             `json:"maxDepth"`
 		Depths          map[string]uint64 `json:"depths,omitempty"`
 		NameLengths     map[string]uint64 `json:"nameLengths,omitempty"`
@@ -433,9 +431,7 @@ func (s ContentSummary) MarshalJSON() ([]byte, error) {
 		Extensions      []ExtensionEntry  `json:"extensions,omitempty"`
 		OtherExtensions *OtherExtensions  `json:"otherExtensions,omitempty"`
 	}{
-		FilesCount: s.TotalFiles,
-		TotalSize:  s.TotalSize,
-		MaxDepth:   s.MaxDepth,
+		MaxDepth: s.MaxDepth,
 	}
 
 	depthKeys := [5]string{"0", "1", "2", "3", "4+"}

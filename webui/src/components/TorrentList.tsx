@@ -11,8 +11,10 @@ import {
   TorrentFileItem,
   AggregationItem,
 } from '../api/graphql';
+import { MagnetIcon } from './MagnetIcon';
 
-function formatSize(bytes: number): string {  if (!bytes || bytes === 0) return '0 B';
+function formatSize(bytes: number): string {
+  if (!bytes || bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -65,7 +67,7 @@ const Disclosure: Component<{ open: boolean; onBeforeMatch: () => void; children
 // filename filter (both applied server-side through the files query), the
 // file table, and its pager. Renders two cells (controls, table) of the
 // expanded row's grid; the tags editor occupies the remaining cell.
-const FilesPanel: Component<{ hash: string; active: boolean }> = (props) => {
+const FilesPanel: Component<{ hash: string; active: boolean; isSingleFile?: boolean; tagsSlot?: any }> = (props) => {
   const PAGE_SIZE = 10;
   const [page, setPage] = createSignal(1);
   const [data, setData] = createSignal<{ items: TorrentFileItem[]; totalCount: number; hasNextPage: boolean } | null>(null);
@@ -76,6 +78,9 @@ const FilesPanel: Component<{ hash: string; active: boolean }> = (props) => {
   const [sortDesc, setSortDesc] = createSignal(false);
   let loaded = false;
   let debounce: number | undefined;
+
+  const isSingle = () =>
+    props.isSingleFile || (data() != null && data()!.totalCount <= 1);
 
   const load = async (p: number) => {
     setLoading(true);
@@ -128,87 +133,91 @@ const FilesPanel: Component<{ hash: string; active: boolean }> = (props) => {
   };
 
   const sortMark = (field: 'path' | 'size') =>
-    sortField() === field ? (sortDesc() ? ' ↓' : ' ↑') : '';
+    sortField() === field ? (sortDesc() ? ' ▼' : ' ▲') : '';
 
   return (
     <>
       <div
-        class="cell-controls"
-        style={{ display: 'flex', 'align-items': 'center', gap: '0.5rem', padding: '0.75rem 0 0 1rem' }}
+        class={`expanded-row-toolbar ${isSingle() ? 'single-file' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          class={`nav-btn ${sortField() === 'path' ? 'active' : ''}`}
-          style={{ height: '2.2rem', display: 'inline-flex', 'align-items': 'center' }}
-          onClick={() => toggleSort('path')}
-        >
-          Filename{sortMark('path')}
-        </button>
-        <button
-          class={`nav-btn ${sortField() === 'size' ? 'active' : ''}`}
-          style={{ height: '2.2rem', display: 'inline-flex', 'align-items': 'center' }}
-          onClick={() => toggleSort('size')}
-        >
-          Size{sortMark('size')}
-        </button>
-        <input
-          type="text"
-          placeholder="Filter by filename..."
-          value={searchText()}
-          onInput={(e) => onSearchInput(e.currentTarget.value)}
-          onClick={(e) => e.stopPropagation()}
-          style={{ margin: 0, padding: '0.3rem 0.6rem', 'font-size': '0.82rem', flex: '1', 'min-width': '8rem', height: '2.2rem' }}
-        />
-      </div>
-      <div class="cell-table" style={{ padding: '0.5rem 1rem 0.75rem' }}>
-        <Show when={loading() && !data()}>
-          <div style={{ 'font-size': '0.82rem', color: 'var(--app-text-muted)' }}>Loading files...</div>
-        </Show>
-        <Show when={data() && data()!.totalCount === 0}>
-          <div style={{ 'font-size': '0.82rem', color: 'var(--app-text-muted)' }}>
-            {appliedQuery() ? `No files match "${appliedQuery()}".` : 'No file information available for this torrent.'}
+        <Show when={!isSingle()}>
+          <div class="search-sort-group">
+            <input
+              class="input-sm filename-filter-input"
+              type="text"
+              placeholder="Filter by filename..."
+              value={searchText()}
+              onInput={(e) => onSearchInput(e.currentTarget.value)}
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              class={`nav-btn btn-sm ${sortField() === 'path' ? 'active' : ''}`}
+              onClick={() => toggleSort('path')}
+            >
+              Filename{sortMark('path')}
+            </button>
+            <button
+              class={`nav-btn btn-sm ${sortField() === 'size' ? 'active' : ''}`}
+              onClick={() => toggleSort('size')}
+            >
+              Size{sortMark('size')}
+            </button>
           </div>
         </Show>
-        <Show when={data() && data()!.totalCount > 0}>
-          <table class="compact-table" style={{ margin: 0, 'border-radius': 0 }}>
-            <thead>
-              <tr>
-                <th class="torrent-file-col">File Path</th>
-                <th style={{ width: '110px', 'text-align': 'right' }}>Size</th>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={data()!.items}>
-                {(file) => (
-                  <tr>
-                    <td class="torrent-file-col" title={file.path}>{file.path}</td>
-                    <td style={{ 'white-space': 'nowrap', 'text-align': 'right', 'font-size': '0.82rem' }} title={String(file.size)}>{formatSize(file.size)}</td>
-                  </tr>
-                )}
-              </For>
-            </tbody>
-          </table>
-          <div style={{ display: 'flex', 'justify-content': 'space-between', 'align-items': 'center', 'margin-top': '0.6rem' }}>
-            <span style={{ 'font-size': '0.78rem', color: 'var(--app-text-muted)' }}>
-              {totalPages() > 1 ? `${(page() - 1) * PAGE_SIZE + 1}–${Math.min(page() * PAGE_SIZE, data()!.totalCount)} of ` : ''}
-              {data()!.totalCount} files
-            </span>
-            <Show when={totalPages() > 1}>
-              <span style={{ display: 'flex', 'align-items': 'center', gap: '0.5rem' }}>
-                <button class="nav-btn" disabled={page() <= 1 || loading()} onClick={() => goto(page() - 1)}>
-                  ← Prev
-                </button>
-                <span style={{ 'font-size': '0.78rem', color: 'var(--app-text-muted)' }}>
-                  Page <strong style={{ color: 'var(--app-text)' }}>{page()}</strong> of <strong style={{ color: 'var(--app-text)' }}>{totalPages()}</strong>
-                </span>
-                <button class="nav-btn" disabled={!data()!.hasNextPage || loading()} onClick={() => goto(page() + 1)}>
-                  Next →
-                </button>
+        {props.tagsSlot}
+      </div>
+      <Show when={(loading() && !data()) || (data() && (data()!.totalCount > 0 || appliedQuery()))}>
+        <div class="cell-table" style={{ padding: '0 1rem 0.4rem' }}>
+          <Show when={loading() && !data()}>
+            <div style={{ 'font-size': '0.82rem', color: 'var(--app-text-muted)' }}>Loading files...</div>
+          </Show>
+          <Show when={data() && data()!.totalCount === 0 && appliedQuery()}>
+            <div style={{ 'font-size': '0.82rem', color: 'var(--app-text-muted)' }}>
+              No files match "{appliedQuery()}".
+            </div>
+          </Show>
+          <Show when={data() && data()!.totalCount > 0}>
+            <table class="compact-table" style={{ margin: 0, 'margin-bottom': 0, 'border-radius': 0 }}>
+              <thead>
+                <tr>
+                  <th class="torrent-file-col">File Path</th>
+                  <th style={{ width: '110px', 'text-align': 'right' }}>Size</th>
+                </tr>
+              </thead>
+              <tbody>
+                <For each={data()!.items}>
+                  {(file) => (
+                    <tr>
+                      <td class="torrent-file-col" title={file.path}>{file.path}</td>
+                      <td style={{ 'white-space': 'nowrap', 'text-align': 'right', 'font-size': '0.82rem' }} title={String(file.size)}>{formatSize(file.size)}</td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+            <div style={{ display: 'flex', 'justify-content': 'space-between', 'align-items': 'center', 'margin-top': '0.35rem' }}>
+              <span style={{ 'font-size': '0.78rem', color: 'var(--app-text-muted)' }}>
+                {totalPages() > 1 ? `${(page() - 1) * PAGE_SIZE + 1}–${Math.min(page() * PAGE_SIZE, data()!.totalCount)} of ` : ''}
+                {data()!.totalCount} {data()!.totalCount === 1 ? 'file' : 'files'}
               </span>
-            </Show>
-          </div>
-        </Show>
-      </div>
+              <Show when={totalPages() > 1}>
+                <span style={{ display: 'flex', 'align-items': 'center', gap: '0.5rem' }}>
+                  <button class="nav-btn" disabled={page() <= 1 || loading()} onClick={() => goto(page() - 1)}>
+                    ← Prev
+                  </button>
+                  <span style={{ 'font-size': '0.78rem', color: 'var(--app-text-muted)' }}>
+                    Page <strong style={{ color: 'var(--app-text)' }}>{page()}</strong> of <strong style={{ color: 'var(--app-text)' }}>{totalPages()}</strong>
+                  </span>
+                  <button class="nav-btn" disabled={!data()!.hasNextPage || loading()} onClick={() => goto(page() + 1)}>
+                    Next →
+                  </button>
+                </span>
+              </Show>
+            </div>
+          </Show>
+        </div>
+      </Show>
     </>
   );
 };
@@ -319,9 +328,8 @@ const TagEditor: Component<{ tags: string[]; onSave: (tags: string[]) => void; s
       class="tag-editor"
       ref={(e) => (editorRef = e)}
       onKeyDown={onEditorKeyDown}
-      style={{ display: 'flex', 'align-items': 'center', gap: '0.35rem', padding: '0.75rem 1rem 0', ...props.style }}
+      style={{ display: 'flex', 'align-items': 'center', gap: '0.35rem', ...props.style }}
     >
-      <span style={{ 'font-size': '0.78rem', 'font-weight': '600', color: 'var(--app-text-muted)', 'margin-right': '0.25rem' }}>Tags:</span>
       <For each={props.tags}>
         {(tag, idx) => (
           <Show
@@ -330,8 +338,7 @@ const TagEditor: Component<{ tags: string[]; onSave: (tags: string[]) => void; s
               <span
                 class="badge tag-chip"
                 data-idx={idx()}
-                tabIndex={-1}
-                style={{ 'flex-shrink': 0 }}
+                tabIndex={0}
                 onClick={() => focusChip(idx())}
                 onDblClick={() => startEdit(idx())}
               >
@@ -340,6 +347,7 @@ const TagEditor: Component<{ tags: string[]; onSave: (tags: string[]) => void; s
             }
           >
             <input
+              class="input-sm"
               type="text"
               value={editText()}
               ref={(el) => (editRef = el)}
@@ -355,23 +363,34 @@ const TagEditor: Component<{ tags: string[]; onSave: (tags: string[]) => void; s
                 e.stopPropagation();
               }}
               onClick={(e) => e.stopPropagation()}
-              style={{ margin: 0, padding: '0.1rem 0.4rem', 'font-size': '0.75rem', width: '9rem', height: '2.2rem' }}
+              style={{ width: '6rem' }}
             />
           </Show>
         )}
       </For>
       <input
+        class="input-sm"
         type="text"
-        placeholder={props.tags.length === 0 ? 'Add a tag, Space or Enter to save...' : 'Add tag...'}
+        placeholder="Add tag..."
         value={newText()}
         ref={(el) => (inputRef = el)}
         onInput={(e) => setNewText(e.currentTarget.value)}
         onClick={(e) => e.stopPropagation()}
-        style={{ margin: 0, padding: '0.2rem 0.5rem', 'font-size': '0.78rem', flex: '1 1 auto', 'min-width': '10rem', height: '2.2rem' }}
+        style={{ flex: '1 1 auto', 'min-width': '4.5rem' }}
       />
     </div>
   );
 };
+
+type ColumnKey = 'size' | 'peers' | 'category' | 'tags' | 'magnet';
+
+const TOGGLABLE_COLUMNS: { key: ColumnKey; label: string }[] = [
+  { key: 'size', label: 'Size' },
+  { key: 'peers', label: 'Seeds / Leech' },
+  { key: 'category', label: 'Category' },
+  { key: 'tags', label: 'Tags' },
+  { key: 'magnet', label: 'Copy magnet' },
+];
 
 export const TorrentList: Component = () => {
   const [queryString, setQueryString] = createSignal('');
@@ -394,14 +413,28 @@ export const TorrentList: Component = () => {
   // Selection
   const [selectedHashes, setSelectedHashes] = createSignal<string[]>([]);
 
-  // Mobile Filter Pane State
+  // Mobile Filter Pane State & Column Toggles
   const [mobileFilterOpen, setMobileFilterOpen] = createSignal(false);
+  const [mobileVisibleCols, setMobileVisibleCols] = createSignal<Set<ColumnKey>>(
+    new Set(['size', 'magnet'])
+  );
+  const toggleCol = (key: ColumnKey) => {
+    setMobileVisibleCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   // Row expansion (actions, tag editor, files), keyed by info hash
   const [expanded, setExpanded] = createSignal<string | null>(null);
   const [copiedHash, setCopiedHash] = createSignal<string | null>(null);
   const copyHash = (hash: string) => {
-    navigator.clipboard?.writeText(hash).catch(() => {});
+    navigator.clipboard?.writeText(hash).catch(() => { });
     setCopiedHash(hash);
     setTimeout(() => {
       if (copiedHash() === hash) setCopiedHash(null);
@@ -625,7 +658,7 @@ export const TorrentList: Component = () => {
   return (
     <div style={{ display: 'flex', 'flex-direction': 'column', flex: '1', 'min-height': '0' }}>
       {/* Search Header */}
-      <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '0.75rem', 'margin-bottom': '1.25rem', flex: 'none' }}>
+      <form class="search-form" onSubmit={handleSearchSubmit}>
         <div style={{ position: 'relative', flex: 1 }}>
           <input
             type="text"
@@ -692,13 +725,33 @@ export const TorrentList: Component = () => {
       <div class="grid-container" style={{ display: 'grid', 'grid-template-columns': '220px 1fr', 'grid-template-rows': 'minmax(0, 1fr)', gap: '1.25rem', flex: '1', 'min-height': '0' }}>
         {/* Sidebar Filter Pane */}
         <aside class={`desktop-sidebar ${mobileFilterOpen() ? 'mobile-open' : ''}`}>
-          <div style={{ display: 'flex', 'justify-content': 'space-between', 'align-items': 'center', 'margin-bottom': '0.75rem' }}>
-            <span style={{ 'font-weight': '600', 'font-size': '0.85rem', 'text-transform': 'uppercase', color: 'var(--app-text-muted)' }}>Filters</span>
-            <Show when={mobileFilterOpen()}>
+          <Show when={mobileFilterOpen()}>
+            <div style={{ display: 'flex', 'justify-content': 'flex-end', 'margin-bottom': '0.5rem' }}>
               <button class="btn-icon" onClick={() => setMobileFilterOpen(false)}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
               </button>
-            </Show>
+            </div>
+          </Show>
+
+          <div class="mobile-only-section" style={{ 'margin-bottom': '1rem' }}>
+            <div style={{ 'font-weight': '600', 'font-size': '0.85rem', 'margin-bottom': '0.45rem' }}>Columns</div>
+            <div style={{ display: 'flex', 'flex-wrap': 'wrap', gap: '0.35rem' }}>
+              <For each={TOGGLABLE_COLUMNS}>
+                {(col) => {
+                  const active = () => mobileVisibleCols().has(col.key);
+                  return (
+                    <button
+                      type="button"
+                      class={`nav-btn btn-sm ${active() ? 'active' : ''}`}
+                      onClick={() => toggleCol(col.key)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {col.label}
+                    </button>
+                  );
+                }}
+              </For>
+            </div>
           </div>
 
           <div style={{ 'margin-bottom': '1rem' }}>
@@ -759,7 +812,7 @@ export const TorrentList: Component = () => {
             </div>
           </Show>
 
-          <div style={{ display: 'flex', 'justify-content': 'space-between', 'align-items': 'center', 'margin-bottom': '0.75rem', 'font-size': '0.82rem', color: 'var(--app-text-muted)' }}>
+          <div style={{ display: 'flex', 'justify-content': 'space-between', 'align-items': 'center', 'margin-bottom': '0.4rem', 'font-size': '0.82rem', color: 'var(--app-text-muted)' }}>
             <span>
               Showing {items().length} of <strong style={{ color: 'var(--app-text)' }}>{totalCount()}{totalCountIsEstimate() ? '+' : ''}</strong> torrents
               <span class="list-spinner" style={{ visibility: loading() ? 'visible' : 'hidden' }} />
@@ -784,8 +837,7 @@ export const TorrentList: Component = () => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', 'align-items': 'center', gap: '0.35rem', 'margin-bottom': '0.6rem', 'font-size': '0.78rem', color: 'var(--app-text-muted)', 'flex-wrap': 'wrap' }}>
-            <span>Sort:</span>
+          <div style={{ display: 'flex', 'align-items': 'center', gap: '0.35rem', 'margin-bottom': '0.4rem', 'font-size': '0.78rem', color: 'var(--app-text-muted)', 'flex-wrap': 'wrap' }}>
             <For
               each={[
                 { field: 'name', label: 'Name' },
@@ -799,8 +851,7 @@ export const TorrentList: Component = () => {
             >
               {(opt) => (
                 <button
-                  class={`nav-btn ${sort()?.field === opt.field ? 'active' : ''}`}
-                  style={{ padding: '0.15rem 0.5rem', 'font-size': '0.75rem' }}
+                  class={`nav-btn btn-sm ${sort()?.field === opt.field ? 'active' : ''}`}
                   onClick={() => toggleSort(opt.field)}
                 >
                   {opt.label}
@@ -814,7 +865,7 @@ export const TorrentList: Component = () => {
             <table class="compact-table">
               <thead>
                 <tr>
-                  <th style={{ width: '36px', 'text-align': 'center' }}>
+                  <th class="col-select" style={{ width: '36px', 'text-align': 'center' }}>
                     <input
                       type="checkbox"
                       checked={items().length > 0 && items().every((i) => selectedHashes().includes(i.torrent.infoHash))}
@@ -823,11 +874,11 @@ export const TorrentList: Component = () => {
                     />
                   </th>
                   <th class="torrent-title-col">Name / Content</th>
-                  <th class="col-fit">Category</th>
-                  <th class="col-fit">Size</th>
-                  <th class="col-fit">Seeds / Leech</th>
-                  <th class="col-fit">Tags</th>
-                  <th style={{ width: '44px' }}></th>
+                  <th class={`col-fit ${!mobileVisibleCols().has('size') ? 'col-hide-mobile' : ''}`}>Size</th>
+                  <th class={`col-fit ${!mobileVisibleCols().has('peers') ? 'col-hide-mobile' : ''}`}>Seeds / Leech</th>
+                  <th class={`col-fit ${!mobileVisibleCols().has('category') ? 'col-hide-mobile' : ''}`}>Category</th>
+                  <th class={`col-fit ${!mobileVisibleCols().has('tags') ? 'col-hide-mobile' : ''}`}>Tags</th>
+                  <th class={`col-magnet ${!mobileVisibleCols().has('magnet') ? 'col-hide-mobile' : ''}`} style={{ width: '44px' }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -843,14 +894,78 @@ export const TorrentList: Component = () => {
                     const hash = item.torrent.infoHash;
                     const isSelected = () => selectedHashes().includes(hash);
                     const open = () => expanded() === hash;
+
+                    let touchTimer: ReturnType<typeof setTimeout> | null = null;
+                    let touchStartX = 0;
+                    let touchStartY = 0;
+                    let didLongPress = false;
+
+                    const onTouchStart = (e: TouchEvent) => {
+                      didLongPress = false;
+                      if (e.touches.length !== 1) return;
+                      const touch = e.touches[0];
+                      touchStartX = touch.clientX;
+                      touchStartY = touch.clientY;
+                      touchTimer = setTimeout(() => {
+                        didLongPress = true;
+                        toggleSelectRow(hash);
+                        if ('vibrate' in navigator) {
+                          try { navigator.vibrate(50); } catch (_) {}
+                        }
+                      }, 500);
+                    };
+
+                    const onTouchMove = (e: TouchEvent) => {
+                      if (!touchTimer) return;
+                      const touch = e.touches[0];
+                      if (Math.hypot(touch.clientX - touchStartX, touch.clientY - touchStartY) > 10) {
+                        clearTimeout(touchTimer);
+                        touchTimer = null;
+                      }
+                    };
+
+                    const onTouchEnd = () => {
+                      if (touchTimer) {
+                        clearTimeout(touchTimer);
+                        touchTimer = null;
+                      }
+                    };
+
+                    const onTouchCancel = () => {
+                      if (touchTimer) {
+                        clearTimeout(touchTimer);
+                        touchTimer = null;
+                      }
+                    };
+
                     const onRowClick = (e: MouseEvent) => {
+                      if (didLongPress) {
+                        didLongPress = false;
+                        return;
+                      }
                       if ((e.target as HTMLElement).closest('button, a, input, select, textarea, .tag-editor, .hash-copy')) return;
                       setExpanded(open() ? null : hash);
                     };
+
+                    const onContextMenu = (e: MouseEvent) => {
+                      if (didLongPress) {
+                        e.preventDefault();
+                      }
+                    };
+
                     return (
                       <>
-                        <tr onClick={onRowClick} style={{ cursor: 'pointer' }}>
-                          <td style={{ 'text-align': 'center' }}>
+                        <tr
+                          class={isSelected() ? 'selected-row' : ''}
+                          onClick={onRowClick}
+                          onContextMenu={onContextMenu}
+                          onTouchStart={onTouchStart}
+                          onTouchMove={onTouchMove}
+                          onTouchEnd={onTouchEnd}
+                          onTouchCancel={onTouchCancel}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <td class="col-select" style={{ 'text-align': 'center' }}>
                             <input
                               type="checkbox"
                               checked={isSelected()}
@@ -861,6 +976,7 @@ export const TorrentList: Component = () => {
                           <td class="torrent-title-col">
                             <div style={{ display: 'flex', 'align-items': 'flex-start', gap: '0.35rem', 'min-width': 0 }}>
                               <span
+                                class="row-expand-icon"
                                 style={{
                                   display: 'inline-block',
                                   'font-size': '0.65rem',
@@ -884,7 +1000,6 @@ export const TorrentList: Component = () => {
                                     e.stopPropagation();
                                     copyHash(hash);
                                   }}
-                                  style={{ color: 'var(--app-text-muted)', 'font-size': '0.72rem', 'margin-top': '0.1rem', 'font-family': 'monospace', cursor: 'pointer', 'word-break': 'break-all' }}
                                 >
                                   {copiedHash() === hash ? 'Copied to clipboard!' : hash}
                                 </div>
@@ -896,7 +1011,22 @@ export const TorrentList: Component = () => {
                               </div>
                             </div>
                           </td>
-                          <td class="col-fit">
+                          <td class={`col-fit ${!mobileVisibleCols().has('size') ? 'col-hide-mobile' : ''}`} style={{ 'white-space': 'nowrap' }}>
+                            <div title={String(item.torrent.size)}>{formatSize(item.torrent.size)}</div>
+                            <Show when={item.torrent.filesStatus === 'single' || item.torrent.filesCount != null}>
+                              <div style={{ color: 'var(--app-text-muted)', 'font-size': '0.72rem', 'margin-top': '0.1rem' }}>
+                                {item.torrent.filesStatus === 'single'
+                                  ? 'single'
+                                  : `${item.torrent.filesCount} ${item.torrent.filesCount === 1 ? 'file' : 'files'}`}
+                              </div>
+                            </Show>
+                          </td>
+                          <td class={`col-fit ${!mobileVisibleCols().has('peers') ? 'col-hide-mobile' : ''}`} style={{ 'white-space': 'nowrap', 'font-size': '0.8rem' }}>
+                            <span style={{ color: '#16a34a', 'font-weight': '500' }}>▲ {item.torrent.seeders || item.seeders || 0}</span>
+                            <span style={{ color: 'var(--app-text-muted)', margin: '0 0.2rem' }}>/</span>
+                            <span style={{ color: '#dc2626', 'font-weight': '500' }}>▼ {item.torrent.leechers || item.leechers || 0}</span>
+                          </td>
+                          <td class={`col-fit ${!mobileVisibleCols().has('category') ? 'col-hide-mobile' : ''}`}>
                             <span style={{ 'text-transform': 'capitalize', 'font-size': '0.8rem' }}>
                               {item.contentType || 'unclassified'}
                             </span>
@@ -909,22 +1039,7 @@ export const TorrentList: Component = () => {
                               </div>
                             </Show>
                           </td>
-                          <td class="col-fit" style={{ 'white-space': 'nowrap' }}>
-                            <div title={String(item.torrent.size)}>{formatSize(item.torrent.size)}</div>
-                            <Show when={item.torrent.filesStatus === 'single' || item.torrent.filesCount != null}>
-                              <div style={{ color: 'var(--app-text-muted)', 'font-size': '0.72rem', 'margin-top': '0.1rem' }}>
-                                {item.torrent.filesStatus === 'single'
-                                  ? 'single'
-                                  : `${item.torrent.filesCount} ${item.torrent.filesCount === 1 ? 'file' : 'files'}`}
-                              </div>
-                            </Show>
-                          </td>
-                          <td class="col-fit" style={{ 'white-space': 'nowrap', 'font-size': '0.8rem' }}>
-                            <span style={{ color: '#16a34a', 'font-weight': '500' }}>▲ {item.torrent.seeders || item.seeders || 0}</span>
-                            <span style={{ color: 'var(--app-text-muted)', margin: '0 0.2rem' }}>/</span>
-                            <span style={{ color: '#dc2626', 'font-weight': '500' }}>▼ {item.torrent.leechers || item.leechers || 0}</span>
-                          </td>
-                          <td class="col-fit">
+                          <td class={`col-fit ${!mobileVisibleCols().has('tags') ? 'col-hide-mobile' : ''}`}>
                             <div style={{ display: 'flex', 'flex-wrap': 'wrap', gap: '0.2rem' }}>
                               <For each={tagsFor(item)}>
                                 {(tag) => (
@@ -935,18 +1050,16 @@ export const TorrentList: Component = () => {
                               </For>
                             </div>
                           </td>
-                          <td style={{ 'text-align': 'center' }}>
+                          <td class={`col-magnet ${!mobileVisibleCols().has('magnet') ? 'col-hide-mobile' : ''}`} style={{ 'text-align': 'center' }}>
                             <Show when={item.torrent.magnetUri}>
                               <a
                                 href={item.torrent.magnetUri}
-                                title="Download Magnet"
+                                title="Copy magnet"
                                 class="btn-icon"
                                 style={{ color: '#334155' }}
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true">
-                                  <path d="M204.10547,53.05469A83.43674,83.43674,0,0,0,144.57227,28.001C144.46582,28,144.35938,28,144.252,28A83.43215,83.43215,0,0,0,84.8457,52.62012L18.74219,119.53223a12.0281,12.0281,0,0,0,.05273,16.91894l28.65332,28.65332a11.914,11.914,0,0,0,8.48438,3.51563h.07129a11.91554,11.91554,0,0,0,8.51367-3.61426l65.61523-67.16309a20.09518,20.09518,0,0,1,27.99219-.25683,19.55435,19.55435,0,0,1,5.95117,14.03906,20.87149,20.87149,0,0,1-6.01269,14.85645l-67.0166,64.99218a11.9984,11.9984,0,0,0-.13086,17.09864l28.65429,28.65429a12.03749,12.03749,0,0,0,16.88672.082l32.93262-32.2951.001-.00079.00048-.0008,33.55518-32.90545C235.84766,139.20605,236.36719,85.7998,204.10547,53.05469ZM58.79492,159.416a3.97331,3.97331,0,0,1-2.83691,1.2041h-.02442a3.9766,3.9766,0,0,1-2.8291-1.17188L24.45117,130.79492a4.00968,4.00968,0,0,1-.01758-5.63965L53.97412,95.25262l34.146,34.146Zm72.06055,72.18164a4.01382,4.01382,0,0,1-5.62891-.02735L96.57227,202.916a4.00027,4.00027,0,0,1,.04492-5.7002l30.11474-29.20563,34.146,34.14624Zm35.73437-35.04218-34.11523-34.11481,31.20215-30.26a28.9462,28.9462,0,0,0,8.39844-20.63183,27.49364,27.49364,0,0,0-8.40137-19.72656,28.1387,28.1387,0,0,0-39.21289.3789c-.01172.01074-.02246.02149-.03321.0332l-30.71728,31.442L59.59619,89.562,90.51953,58.25977A75.47294,75.47294,0,0,1,144.25293,36c.0957,0,.19434,0,.29.001a75.486,75.486,0,0,1,53.86328,22.66894c29.18945,29.625,28.68848,77.97559-1.08887,107.75293Z" />
-                                </svg>
+                                <MagnetIcon size={20} />
                               </a>
                             </Show>
                           </td>
@@ -954,12 +1067,17 @@ export const TorrentList: Component = () => {
                         <tr>
                           <td colspan={7} style={{ padding: 0, border: 'none', background: '#f8fafc' }}>
                             <Disclosure open={open()} onBeforeMatch={() => setExpanded(hash)}>
-                              <div class="expanded-grid">
-                                <div class="cell-tags">
-                                  <TagEditor tags={tagsFor(item)} onSave={(t) => saveTags(hash, t)} style={{ padding: '0.75rem 1rem 0 0' }} />
-                                </div>
-                                <FilesPanel hash={hash} active={open()} />
-                              </div>
+                              <FilesPanel
+                                hash={hash}
+                                active={open()}
+                                isSingleFile={item.torrent.filesStatus === 'single' || item.torrent.filesCount === 1}
+                                tagsSlot={
+                                  <TagEditor
+                                    tags={tagsFor(item)}
+                                    onSave={(t) => saveTags(hash, t)}
+                                  />
+                                }
+                              />
                             </Disclosure>
                           </td>
                         </tr>
@@ -1003,7 +1121,7 @@ export const TorrentList: Component = () => {
                 {tagModal().mode} Tags ({tagModal().hashes.length} selected)
               </h5>
               <button class="btn-icon" onClick={() => setTagModal({ ...tagModal(), open: false })}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
               </button>
             </header>
 

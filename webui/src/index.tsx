@@ -261,14 +261,21 @@ const App = () => {
         }
 
         .hash-copy {
+          display: inline-block;
+          width: fit-content;
+          max-width: 100%;
           color: var(--app-text-muted);
           font-size: 0.72rem;
-          margin-top: 0.1rem;
           font-family: monospace;
           cursor: pointer;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+
+        .hash-copy:hover {
+          color: var(--app-text);
+          text-decoration: underline;
         }
 
         .torrent-file-col {
@@ -373,6 +380,9 @@ const App = () => {
           .mobile-filter-btn {
             display: none !important;
           }
+          .col-tags {
+            display: none !important;
+          }
         }
 
         /* Sidebar: a flex column filling the grid row (which is the height
@@ -423,6 +433,9 @@ const App = () => {
             display: none !important;
           }
           .col-hide-mobile {
+            display: none !important;
+          }
+          .desktop-title-tags {
             display: none !important;
           }
           .expanded-row-toolbar .tag-editor .tag-chip {

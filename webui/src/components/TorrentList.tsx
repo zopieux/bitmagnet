@@ -968,7 +968,7 @@ export const TorrentList: Component = () => {
                   <th class={`col-fit ${!mobileVisibleCols().has('size') ? 'col-hide-mobile' : ''}`}>Size</th>
                   <th class={`col-fit ${!mobileVisibleCols().has('peers') ? 'col-hide-mobile' : ''}`}>Seeds / Leech</th>
                   <th class={`col-fit ${!mobileVisibleCols().has('category') ? 'col-hide-mobile' : ''}`}>Category</th>
-                  <th class={`col-fit ${!mobileVisibleCols().has('tags') ? 'col-hide-mobile' : ''}`}>Tags</th>
+                  <th class={`col-fit col-tags ${!mobileVisibleCols().has('tags') ? 'col-hide-mobile' : ''}`}>Tags</th>
                   <th class={`col-magnet ${!mobileVisibleCols().has('magnet') ? 'col-hide-mobile' : ''}`} style={{ width: '44px' }}></th>
                 </tr>
               </thead>
@@ -1084,15 +1084,26 @@ export const TorrentList: Component = () => {
                                 <div class="torrent-title-text" title={item.title || item.torrent.name}>
                                   {item.title || item.torrent.name}
                                 </div>
-                                <div
-                                  class="hash-copy"
-                                  title="Click to copy the full hash"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    copyHash(hash);
-                                  }}
-                                >
-                                  {copiedHash() === hash ? 'Copied to clipboard!' : hash}
+                                <div style={{ display: 'flex', 'align-items': 'center', gap: '0.4rem', 'flex-wrap': 'wrap', 'margin-top': '0.15rem' }}>
+                                  <span
+                                    class="hash-copy"
+                                    title="Click to copy the full hash"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyHash(hash);
+                                    }}
+                                  >
+                                    {copiedHash() === hash ? 'Copied to clipboard!' : hash}
+                                  </span>
+                                  <div class="desktop-title-tags" style={{ display: 'inline-flex', 'flex-wrap': 'wrap', gap: '0.2rem' }}>
+                                    <For each={tagsFor(item)}>
+                                      {(tag) => (
+                                        <span class="badge">
+                                          {tag}
+                                        </span>
+                                      )}
+                                    </For>
+                                  </div>
                                 </div>
                                 <Show when={item.content?.overview}>
                                   <div style={{ color: 'var(--app-text-muted)', 'font-size': '0.75rem', 'margin-top': '0.2rem', display: '-webkit-box', '-webkit-line-clamp': 2, '-webkit-box-orient': 'vertical', overflow: 'hidden' }}>
@@ -1130,7 +1141,7 @@ export const TorrentList: Component = () => {
                               </div>
                             </Show>
                           </td>
-                          <td class={`col-fit ${!mobileVisibleCols().has('tags') ? 'col-hide-mobile' : ''}`}>
+                          <td class={`col-fit col-tags ${!mobileVisibleCols().has('tags') ? 'col-hide-mobile' : ''}`}>
                             <div style={{ display: 'flex', 'flex-wrap': 'wrap', gap: '0.2rem' }}>
                               <For each={tagsFor(item)}>
                                 {(tag) => (

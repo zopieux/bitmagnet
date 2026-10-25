@@ -12,6 +12,14 @@ import (
 // ErrUnmatched is returned when no content match is found.
 var ErrUnmatched = errors.New("no match found")
 
+func Classify(
+	ctx context.Context,
+	torrent model.Torrent,
+	tmdbClient tmdb.Client,
+) (Result, error) {
+	return Result{}, nil
+}
+
 // Classify runs the straight-line classification pipeline for a torrent:
 // 1. Parse date from the torrent name.
 // 2. Parse video content attributes (title, year, episodes, resolution, etc.).
@@ -19,7 +27,7 @@ var ErrUnmatched = errors.New("no match found")
 //
 // There are no workflows, flags, or conditions — just this function.
 // TMDB lookup is skipped if tmdbClient is nil.
-func Classify(
+func classifyLegacy(
 	ctx context.Context,
 	torrent model.Torrent,
 	tmdbClient tmdb.Client,
@@ -31,22 +39,7 @@ func Classify(
 		result.Date = date
 	}
 
-	// 2. Detect content type from file composition and name keywords
-	// (the upstream workflow's first step; see content_type.go).
-	if ct := DetectContentType(torrent); ct.Valid {
-		result.ContentType = ct
-	}
-
-	// 3. Parse video content attributes. Mirroring the workflow, this
-	// only runs for video content: an as yet untyped torrent, or one
-	// whose files are majority video by size (> 100MB net). A detected
-	// non-video type is never overridden (MergeAttributes keeps it).
-	if !result.ContentType.Valid || videoExtensionBytes(torrent.Files) > 100*mb {
-		attrs, err := parsers.ParseVideoContent(torrent, result.ContentType, result.Date)
-		if err != nil {
-			return result, err
-		}
-
+	if attrs, err := parsers.ParseVideoContent(torrent, result.ContentType, result.Date); err == nil {
 		result.MergeAttributes(attrs)
 	}
 
@@ -91,3 +84,5 @@ func Classify(
 
 	return result, nil
 }
+
+var _ = classifyLegacy

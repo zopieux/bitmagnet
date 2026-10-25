@@ -55,6 +55,7 @@ type crawler struct {
 	// soughtNodeID is a random node ID used as the target for find_node and sample_infohashes requests.
 	// It is rotated every 10 seconds.
 	soughtNodeID   *concurrency.AtomicValue[protocol.ID]
+	probeCursor    protocol.ID
 	stopped        chan struct{}
 	persistedTotal *prometheus.CounterVec
 	queueMetrics   queueprometheus.QueueMetrics
@@ -70,6 +71,9 @@ type crawler struct {
 func (c *crawler) start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	c.backfillMultiFileSummaries(ctx)
+
 	// start the various pipeline workers
 	go c.rotateSoughtNodeID(ctx)
 	go c.runDiscoveredNodes(ctx)
@@ -87,6 +91,7 @@ func (c *crawler) start() {
 	go c.runPersistSources(ctx)
 	go c.getOldNodes(ctx)
 	go c.runStatsLogger(ctx)
+	go c.runMissingSummaryProbe(ctx)
 	<-c.stopped
 }
 

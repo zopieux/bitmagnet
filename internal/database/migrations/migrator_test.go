@@ -30,6 +30,23 @@ func TestMigrations(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, count)
 
+	var hasFilesSummary bool
+	rows, err := db.Query("PRAGMA table_info(torrents)")
+	require.NoError(t, err)
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue any
+		err = rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk)
+		require.NoError(t, err)
+		if name == "files_summary" {
+			hasFilesSummary = true
+		}
+	}
+	rows.Close()
+	require.True(t, hasFilesSummary)
+
 	// Test rollback
 	err = goose.DownContext(ctx, db, ".")
 	require.NoError(t, err)

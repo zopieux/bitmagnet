@@ -106,6 +106,7 @@ func (c *crawler) runPersistTorrents(ctx context.Context) {
 						string(c.dao.Torrent.Name.ColumnName()),
 						string(c.dao.Torrent.FilesStatus.ColumnName()),
 						string(c.dao.Torrent.FilesCount.ColumnName()),
+						string(c.dao.Torrent.FilesSummary.ColumnName()),
 						string(c.dao.Torrent.UpdatedAt.ColumnName()),
 					}),
 				}).CreateInBatches(torrentsToPersist, 100); err != nil {
@@ -168,11 +169,14 @@ func createTorrentModel(
 	}
 
 	var filesCount model.NullUint
+	var filesSummary *model.ContentSummary
 
 	filesStatus := model.FilesStatusSingle
 	if len(info.Files) > 0 {
 		filesStatus = model.FilesStatusMulti
 		filesCount = model.NewNullUint(uint(len(info.Files)))
+		summary := model.SummarizeMetainfoFiles(info)
+		filesSummary = &summary
 	}
 
 	files := make([]model.TorrentFile, 0, min(int(saveFilesThreshold), len(info.Files)))
@@ -207,8 +211,9 @@ func createTorrentModel(
 		Private:     private,
 		Pieces:      pieces,
 		Files:       files,
-		FilesStatus: filesStatus,
-		FilesCount:  filesCount,
+		FilesStatus:  filesStatus,
+		FilesCount:   filesCount,
+		FilesSummary: filesSummary,
 		Sources: []model.TorrentsTorrentSource{
 			{
 				Source:   "dht",

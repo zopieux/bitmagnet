@@ -20,10 +20,11 @@ type Torrent struct {
 	Private     bool                    `gorm:"column:private;not null" json:"private"`
 	CreatedAt   time.Time               `gorm:"column:created_at;not null;<-:create" json:"createdAt"`
 	UpdatedAt   time.Time               `gorm:"column:updated_at;not null" json:"updatedAt"`
-	FilesStatus FilesStatus             `gorm:"column:files_status;not null" json:"filesStatus"`
-	Extension   NullString              `gorm:"column:extension;<-:false" json:"extension"`
-	FilesCount  NullUint                `gorm:"column:files_count" json:"filesCount"`
-	Hint        TorrentHint             `gorm:"foreignKey:InfoHash" json:"hint"`
+	FilesStatus  FilesStatus             `gorm:"column:files_status;not null" json:"filesStatus"`
+	Extension    NullString              `gorm:"column:extension;<-:false" json:"extension"`
+	FilesCount   NullUint                `gorm:"column:files_count" json:"filesCount"`
+	FilesSummary *ContentSummary         `gorm:"column:files_summary" json:"filesSummary,omitempty"`
+	Hint         TorrentHint             `gorm:"foreignKey:InfoHash" json:"hint"`
 	Contents    []TorrentContent        `gorm:"foreignKey:InfoHash" json:"contents"`
 	Sources     []TorrentsTorrentSource `gorm:"foreignKey:InfoHash" json:"sources"`
 	Files       []TorrentFile           `gorm:"foreignKey:InfoHash" json:"files"`

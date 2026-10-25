@@ -36,6 +36,7 @@ func newTorrent(db *gorm.DB, opts ...gen.DOOption) torrent {
 	_torrent.FilesStatus = field.NewField(tableName, "files_status")
 	_torrent.Extension = field.NewString(tableName, "extension")
 	_torrent.FilesCount = field.NewField(tableName, "files_count")
+	_torrent.FilesSummary = field.NewField(tableName, "files_summary")
 	_torrent.Hint = torrentHasOneHint{
 		db: db.Session(&gorm.Session{}),
 
@@ -95,6 +96,7 @@ type torrent struct {
 	FilesStatus field.Field
 	Extension   field.String
 	FilesCount  field.Field
+	FilesSummary field.Field
 	Hint        torrentHasOneHint
 
 	Contents torrentHasManyContents
@@ -131,6 +133,7 @@ func (t *torrent) updateTableName(table string) *torrent {
 	t.FilesStatus = field.NewField(table, "files_status")
 	t.Extension = field.NewString(table, "extension")
 	t.FilesCount = field.NewField(table, "files_count")
+	t.FilesSummary = field.NewField(table, "files_summary")
 
 	t.fillFieldMap()
 
@@ -157,6 +160,7 @@ func (t *torrent) fillFieldMap() {
 	t.fieldMap["files_status"] = t.FilesStatus
 	t.fieldMap["extension"] = t.Extension
 	t.fieldMap["files_count"] = t.FilesCount
+	t.fieldMap["files_summary"] = t.FilesSummary
 
 }
 

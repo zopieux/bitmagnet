@@ -105,6 +105,10 @@ func (h *ClassificationHandler) GetBatch(c *gin.Context) {
 				},
 			}
 		}
+		if results[i].Torrent.FilesSummary == nil && results[i].Torrent.FilesStatus == model.FilesStatusSingle && results[i].Torrent.Name != "" {
+			s := model.NewSingleFileSummary(results[i].Torrent.Name, uint64(results[i].Torrent.Size), results[i].Torrent.Extension.String)
+			results[i].Torrent.FilesSummary = &s
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

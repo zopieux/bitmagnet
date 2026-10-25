@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show, Component } from 'solid-js';
+import { createSignal, createEffect, onMount, onCleanup, For, Show, Component } from 'solid-js';
 import {
   searchTorrents,
   getTorrentFilesPage,
@@ -392,14 +392,66 @@ const TOGGLABLE_COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: 'magnet', label: 'Copy magnet' },
 ];
 
+const SORT_OPTIONS = [
+  { field: 'name', label: 'Name' },
+  { field: 'info_hash', label: 'Hash' },
+  { field: 'published_at', label: 'Age' },
+  { field: 'seeders', label: 'Seeds' },
+  { field: 'leechers', label: 'Leech' },
+  { field: 'size', label: 'Size' },
+  { field: 'files_count', label: 'Files' },
+] as const;
+
+type SortField = typeof SORT_OPTIONS[number]['field'];
+
+interface SortState {
+  field: SortField;
+  isAsc: boolean;
+}
+
+const DEFAULT_SORT: SortState = {
+  field: 'published_at',
+  isAsc: true,
+};
+
+function parseSortParam(raw: string | null): SortState {
+  if (!raw) return DEFAULT_SORT;
+  let field = raw.trim();
+  let isAsc = true;
+  if (field.startsWith('-')) {
+    isAsc = false;
+    field = field.slice(1).trim();
+  } else if (field.startsWith('+') || field.startsWith(' ')) {
+    isAsc = true;
+    field = field.slice(1).trim();
+  }
+  if (!SORT_OPTIONS.some((o) => o.field === field)) return DEFAULT_SORT;
+  return { field: field as SortField, isAsc };
+}
+
+function parseUrlState() {
+  const params = new URLSearchParams(window.location.search);
+  const q = params.get('q') || '';
+  const pageRaw = parseInt(params.get('page') || '1', 10);
+  const page = isNaN(pageRaw) || pageRaw < 1 ? 1 : pageRaw;
+  const perPageRaw = parseInt(params.get('per_page') || params.get('limit') || '25', 10);
+  const perPage = [10, 25, 50, 100].includes(perPageRaw) ? perPageRaw : 25;
+  const categories = params.getAll('category').flatMap((c) => c.split(',')).filter(Boolean);
+  const tags = params.getAll('tag').flatMap((t) => t.split(',')).filter(Boolean);
+  const sort = parseSortParam(params.get('sort'));
+
+  return { q, page, perPage, categories, tags, sort };
+}
+
 export const TorrentList: Component = () => {
-  const [queryString, setQueryString] = createSignal('');
-  const [debouncedQuery, setDebouncedQuery] = createSignal('');
-  const [sort, setSort] = createSignal<{ field: string; descending: boolean } | null>(null);
-  const [selectedCategories, setSelectedCategories] = createSignal<string[]>([]);
-  const [selectedTags, setSelectedTags] = createSignal<string[]>([]);
-  const [page, setPage] = createSignal(1);
-  const [limit, setLimit] = createSignal(25);
+  const initial = parseUrlState();
+  const [queryString, setQueryString] = createSignal(initial.q);
+  const [debouncedQuery, setDebouncedQuery] = createSignal(initial.q);
+  const [sort, setSort] = createSignal<SortState>(initial.sort);
+  const [selectedCategories, setSelectedCategories] = createSignal<string[]>(initial.categories);
+  const [selectedTags, setSelectedTags] = createSignal<string[]>(initial.tags);
+  const [page, setPage] = createSignal(initial.page);
+  const [limit, setLimit] = createSignal(initial.perPage);
 
   const [items, setItems] = createSignal<TorrentContentItem[]>([]);
   const [totalCount, setTotalCount] = createSignal(0);
@@ -491,13 +543,15 @@ export const TorrentList: Component = () => {
     setLoading(true);
     setError(null);
     try {
+      const s = sort();
+      const apiDescending = s.field === 'published_at' ? s.isAsc : !s.isAsc;
       const res = await searchTorrents({
         queryString: debouncedQuery(),
         page: page(),
         limit: limit(),
         contentTypes: selectedCategories(),
         tags: selectedTags(),
-        orderBy: sort() ?? undefined,
+        orderBy: { field: s.field, descending: apiDescending },
       });
       setItems(res.items || []);
       setTotalCount(res.totalCount || 0);
@@ -533,16 +587,63 @@ export const TorrentList: Component = () => {
     }, 300);
   });
 
-  const toggleSort = (field: string) => {
+  const toggleSort = (field: SortField) => {
     const cur = sort();
-    if (cur && cur.field === field) {
-      setSort({ field, descending: !cur.descending });
+    if (cur.field === field) {
+      setSort({ field, isAsc: !cur.isAsc });
     } else {
-      // text fields sort ascending first, numeric fields descending
-      setSort({ field, descending: field !== 'name' && field !== 'info_hash' });
+      const isAsc = field === 'published_at' || field === 'name' || field === 'info_hash';
+      setSort({ field, isAsc });
     }
     setPage(1);
   };
+
+  createEffect(() => {
+    const q = debouncedQuery().trim();
+    const p = page();
+    const l = limit();
+    const cats = selectedCategories();
+    const tags = selectedTags();
+    const s = sort();
+
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (p > 1) params.set('page', p.toString());
+    if (l !== 25) {
+      const key = new URLSearchParams(window.location.search).has('limit') ? 'limit' : 'per_page';
+      params.set(key, l.toString());
+    }
+    if (cats.length > 0) params.set('category', cats.join(','));
+    if (tags.length > 0) params.set('tag', tags.join(','));
+    if (s.field !== 'published_at' || !s.isAsc) {
+      params.set('sort', `${s.isAsc ? '+' : '-'}${s.field}`);
+    }
+
+    const qs = params.toString();
+    const newSearch = qs ? '?' + qs : '';
+    if (window.location.search !== newSearch) {
+      const newUrl = `${window.location.pathname}${newSearch}${window.location.hash}`;
+      window.history.replaceState(null, '', newUrl);
+    }
+  });
+
+  onMount(() => {
+    const handlePopState = () => {
+      clearTimeout(debounceTimer);
+      const state = parseUrlState();
+      setQueryString(state.q);
+      setDebouncedQuery(state.q);
+      setPage(state.page);
+      setLimit(state.perPage);
+      setSelectedCategories(state.categories);
+      setSelectedTags(state.tags);
+      setSort(state.sort);
+    };
+    window.addEventListener('popstate', handlePopState);
+    onCleanup(() => {
+      window.removeEventListener('popstate', handlePopState);
+    });
+  });
 
   const handleSearchSubmit = (e: Event) => {
     e.preventDefault();
@@ -837,32 +938,22 @@ export const TorrentList: Component = () => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', 'align-items': 'center', gap: '0.35rem', 'margin-bottom': '0.4rem', 'font-size': '0.78rem', color: 'var(--app-text-muted)', 'flex-wrap': 'wrap' }}>
-            <For
-              each={[
-                { field: 'name', label: 'Name' },
-                { field: 'info_hash', label: 'Hash' },
-                { field: 'published_at', label: 'Age' },
-                { field: 'seeders', label: 'Seeds' },
-                { field: 'leechers', label: 'Leech' },
-                { field: 'size', label: 'Size' },
-                { field: 'files_count', label: 'Files' },
-              ]}
-            >
+          <div class="list-sort-bar" style={{ display: 'flex', 'align-items': 'center', gap: '0.35rem', 'margin-bottom': '0.4rem', 'font-size': '0.78rem', color: 'var(--app-text-muted)', 'flex-wrap': 'wrap' }}>
+            <For each={SORT_OPTIONS}>
               {(opt) => (
                 <button
-                  class={`nav-btn btn-sm ${sort()?.field === opt.field ? 'active' : ''}`}
+                  class={`nav-btn btn-sm ${sort().field === opt.field ? 'active' : ''}`}
                   onClick={() => toggleSort(opt.field)}
                 >
                   {opt.label}
-                  {sort()?.field === opt.field ? (sort()!.descending ? ' ▼' : ' ▲') : ''}
+                  {sort().field === opt.field ? (sort().isAsc ? ' ▲' : ' ▼') : ''}
                 </button>
               )}
             </For>
           </div>
 
           <div style={{ 'overflow-x': 'auto' }}>
-            <table class="compact-table">
+            <table class="compact-table" style={{ 'margin-bottom': 0 }}>
               <thead>
                 <tr>
                   <th class="col-select" style={{ width: '36px', 'text-align': 'center' }}>
@@ -1090,7 +1181,7 @@ export const TorrentList: Component = () => {
           </div>
 
           {/* Pagination Controls */}
-          <div style={{ display: 'flex', 'justify-content': 'space-between', 'align-items': 'center', 'margin-top': '1rem' }}>
+          <div style={{ display: 'flex', 'justify-content': 'space-between', 'align-items': 'center', 'margin-top': '0.35rem' }}>
             <button
               class="nav-btn"
               disabled={page() <= 1}

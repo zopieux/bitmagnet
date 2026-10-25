@@ -219,6 +219,7 @@ const App = () => {
           border: 1px solid var(--app-border);
           border-radius: var(--app-radius);
           overflow: hidden;
+          margin-bottom: 0;
         }
 
         table.compact-table th {

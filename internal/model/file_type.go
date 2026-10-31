@@ -38,6 +38,11 @@ var extensionToFileTypeMap = map[string]FileType{
 	"m4b":  FileTypeAudio,
 	"mid":  FileTypeAudio,
 	"dsf":  FileTypeAudio,
+	"alac": FileTypeAudio,
+	"ape":  FileTypeAudio,
+	"dff":  FileTypeAudio,
+	"opus": FileTypeAudio,
+	"wma":  FileTypeAudio,
 
 	// Data
 	"csv":  FileTypeData,
@@ -110,7 +115,17 @@ var extensionToFileTypeMap = map[string]FileType{
 	"mpg":  FileTypeVideo,
 	"mpeg": FileTypeVideo,
 	"ts":   FileTypeVideo,
+	"m2ts": FileTypeVideo,
+	"mts":  FileTypeVideo,
 	"vob":  FileTypeVideo,
+	"rm":   FileTypeVideo,
+	"rmvb": FileTypeVideo,
+	"asf":  FileTypeVideo,
+	"3gp":  FileTypeVideo,
+	"ogv":  FileTypeVideo,
+	"webm": FileTypeVideo,
+	"divx": FileTypeVideo,
+	"f4v":  FileTypeVideo,
 }
 
 var fileTypeToExtensionsMap map[FileType][]string

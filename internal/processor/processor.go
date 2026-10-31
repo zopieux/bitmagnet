@@ -113,7 +113,7 @@ func (c processor) Process(ctx context.Context, params MessageParams) error {
 			}
 		}
 
-		if classify.IsPornTorrent(torrent) {
+		if classify.IsPornTorrent(torrent) && !classify.IsMostlyAudioTorrent(torrent) {
 			switch c.pornAction {
 			case classify.PornActionKeep:
 			case classify.PornActionArchive:

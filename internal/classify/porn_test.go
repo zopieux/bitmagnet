@@ -289,3 +289,138 @@ func TestIsPornTorrent(t *testing.T) {
 	}
 	assert.False(t, IsPornTorrent(torrent))
 }
+
+func TestIsMostlyAudioTorrent(t *testing.T) {
+	t.Parallel()
+
+	// Single-file audio (the blink-182 FP case).
+	assert.True(t, IsMostlyAudioTorrent(model.Torrent{
+		Name:        "blink-182 - California (Deluxe Edition) (2016 Rock) [Flac 24-44].flac",
+		Size:        123456789,
+		FilesStatus: model.FilesStatusSingle,
+	}))
+
+	// Single file with no extension in the name: no file info, no bail-out.
+	assert.False(t, IsMostlyAudioTorrent(model.Torrent{
+		Name:        "blink-182 - California (Deluxe Edition) (2016 Rock) [Flac 24-44]",
+		Size:        123456789,
+		FilesStatus: model.FilesStatusSingle,
+	}))
+
+	// Single-file video.
+	assert.False(t, IsMostlyAudioTorrent(model.Torrent{
+		Name:        "some movie.mkv",
+		Size:        123456789,
+		FilesStatus: model.FilesStatusSingle,
+	}))
+
+	// Album tree: flac + cover art + nfo.
+	assert.True(t, IsMostlyAudioTorrent(model.Torrent{
+		FilesStatus: model.FilesStatusMulti,
+		Files: []model.TorrentFile{
+			{Path: "album/01 - Track One.flac", Size: 30000000},
+			{Path: "album/02 - Track Two.flac", Size: 28000000},
+			{Path: "album/cover.jpg", Size: 2000000},
+			{Path: "album/album.nfo", Size: 1024},
+		},
+	}))
+
+	// Audiobook with cover art.
+	assert.True(t, IsMostlyAudioTorrent(model.Torrent{
+		FilesStatus: model.FilesStatusMulti,
+		Files: []model.TorrentFile{
+			{Path: "book/ch01.m4b", Size: 200000000},
+			{Path: "book/ch02.m4b", Size: 210000000},
+			{Path: "book/cover.png", Size: 500000},
+		},
+	}))
+
+	// Any video file blocks the bail-out, even a tiny one.
+	assert.False(t, IsMostlyAudioTorrent(model.Torrent{
+		FilesStatus: model.FilesStatusMulti,
+		Files: []model.TorrentFile{
+			{Path: "album/01 - Track One.flac", Size: 30000000},
+			{Path: "album/preview.mp4", Size: 1000000},
+		},
+	}))
+
+	// Photo set: images without audio.
+	assert.False(t, IsMostlyAudioTorrent(model.Torrent{
+		FilesStatus: model.FilesStatusMulti,
+		Files: []model.TorrentFile{
+			{Path: "photos/01.jpg", Size: 5000000},
+			{Path: "photos/02.jpg", Size: 6000000},
+		},
+	}))
+
+	// Mostly image: image bytes exceed audio bytes.
+	assert.False(t, IsMostlyAudioTorrent(model.Torrent{
+		FilesStatus: model.FilesStatusMulti,
+		Files: []model.TorrentFile{
+			{Path: "pack/music.mp3", Size: 10000000},
+			{Path: "pack/art/01.jpg", Size: 20000000},
+			{Path: "pack/art/02.jpg", Size: 20000000},
+		},
+	}))
+
+	// Tie between audio and image: bail out.
+	assert.True(t, IsMostlyAudioTorrent(model.Torrent{
+		FilesStatus: model.FilesStatusMulti,
+		Files: []model.TorrentFile{
+			{Path: "pack/music.mp3", Size: 20000000},
+			{Path: "pack/art/01.jpg", Size: 20000000},
+		},
+	}))
+
+	// No audio at all (documents).
+	assert.False(t, IsMostlyAudioTorrent(model.Torrent{
+		FilesStatus: model.FilesStatusMulti,
+		Files: []model.TorrentFile{
+			{Path: "docs/book.pdf", Size: 5000000},
+		},
+	}))
+
+	// No file info at all.
+	assert.False(t, IsMostlyAudioTorrent(model.Torrent{
+		Name:        "mystery",
+		Size:        5000000,
+		FilesStatus: model.FilesStatusNoInfo,
+	}))
+}
+
+func TestPornTorrentAudioBailout(t *testing.T) {
+	t.Parallel()
+
+	// The blink-182 FP: the name matches the JAV-code pattern ("blink" +
+	// "-182"), but the torrent is a single-file flac release.
+	torrent := model.Torrent{
+		Name:        "blink-182 - California (Deluxe Edition) (2016 Rock) [Flac 24-44].flac",
+		Size:        123456789,
+		FilesStatus: model.FilesStatusSingle,
+	}
+	assert.True(t, IsPornTorrent(torrent))
+	assert.True(t, IsMostlyAudioTorrent(torrent))
+	assert.False(t, IsPornTorrent(torrent) && !IsMostlyAudioTorrent(torrent))
+
+	// The same name with a video file is still porn.
+	torrent = model.Torrent{
+		Name:        "blink-182 - California (Deluxe Edition) (2016 Rock) [Flac 24-44]",
+		FilesStatus: model.FilesStatusMulti,
+		Files: []model.TorrentFile{
+			{Path: "blink-182 - California (Deluxe Edition) (2016 Rock) [Flac 24-44].mkv", Size: 123456789},
+		},
+	}
+	assert.True(t, IsPornTorrent(torrent) && !IsMostlyAudioTorrent(torrent))
+
+	// A photo set with a matching name is still porn (images alone never
+	// bail out).
+	torrent = model.Torrent{
+		Name:        "NSFW photo pack",
+		FilesStatus: model.FilesStatusMulti,
+		Files: []model.TorrentFile{
+			{Path: "photos/01.jpg", Size: 5000000},
+			{Path: "photos/02.jpg", Size: 6000000},
+		},
+	}
+	assert.True(t, IsPornTorrent(torrent) && !IsMostlyAudioTorrent(torrent))
+}

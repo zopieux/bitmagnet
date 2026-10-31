@@ -398,7 +398,7 @@ var javCodeExcludedNumbers = map[string]struct{}{
 }
 
 var (
-	javCodePattern = regexp.MustCompile(`(?i)(?:^|` + pornBoundary + `)([a-z]{2,6})-(\d{3,6})(?:$|` + pornBoundary + `)`)
+	javCodePattern    = regexp.MustCompile(`(?i)(?:^|` + pornBoundary + `)([a-z]{2,6})-(\d{3,6})(?:$|` + pornBoundary + `)`)
 	javCompactPattern = regexp.MustCompile(`(?i)(?:^|` + pornBoundary + `)([a-z]{2,6})(\d{3,5})(?:$|` + pornBoundary + `)`)
 )
 
@@ -509,4 +509,47 @@ func IsPornTorrent(torrent model.Torrent) bool {
 	}
 
 	return false
+}
+
+// IsMostlyAudioTorrent reports whether the torrent's known files are
+// predominantly audio with no video (music albums, audiobooks, ...).
+//
+// Such torrents are bailed out of the porn check: an audio-only release can
+// match a name pattern without containing any porn (e.g. "blink-182 -
+// California (Deluxe Edition) (2016 Rock) [Flac 24-44]" matches the JAV-code
+// pattern but is a lossless music album). Torrents that are mostly video or
+// mostly image still go through the classifier, as do torrents with no
+// usable file information.
+func IsMostlyAudioTorrent(torrent model.Torrent) bool {
+	var audioBytes, videoBytes, imageBytes uint64
+
+	addFile := func(path string, size uint64) {
+		extension := model.FileExtensionFromPath(path)
+		if !extension.Valid {
+			return
+		}
+
+		switch model.FileTypeFromExtension(extension.String).FileType {
+		case model.FileTypeAudio:
+			audioBytes += size
+		case model.FileTypeVideo:
+			videoBytes += size
+		case model.FileTypeImage:
+			imageBytes += size
+		}
+	}
+
+	if len(torrent.Files) > 0 {
+		for _, file := range torrent.Files {
+			addFile(file.Path, uint64(file.Size))
+		}
+	} else if torrent.FilesStatus == model.FilesStatusSingle {
+		addFile(torrent.Name, uint64(torrent.Size))
+	}
+
+	if audioBytes == 0 || videoBytes > 0 {
+		return false
+	}
+
+	return audioBytes >= imageBytes
 }

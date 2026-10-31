@@ -56,15 +56,7 @@ func New(p Params) Result {
 				blockingManager: bm,
 				tmdbClient:      tc,
 				tmdbEnabled:     tmdbEnabled,
-				bannedAction:    p.ClassifyConfig.BannedAction,
-				pornAction:      p.ClassifyConfig.PornAction,
-				scriptActions: map[classify.Script]classify.ScriptAction{
-					classify.ScriptCyrillic: p.ClassifyConfig.CyrillicAction,
-					classify.ScriptKorean:   p.ClassifyConfig.KoreanAction,
-					classify.ScriptChinese:  p.ClassifyConfig.ChineseAction,
-					classify.ScriptJapanese: p.ClassifyConfig.JapaneseAction,
-					classify.ScriptThai:     p.ClassifyConfig.ThaiAction,
-				},
+				classifyConfig:  p.ClassifyConfig,
 			}, nil
 		}),
 	}

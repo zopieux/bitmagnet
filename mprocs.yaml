@@ -1,14 +1,14 @@
 procs:
-  fakedht:
-    shell: nix develop --command go run ./cmd/fakedht
-    env:
-      FAKEDHT_COUNT: "2000"
+  # fakedht:
+  #   shell: nix develop --command go run ./cmd/fakedht
+  #   env:
+  #     FAKEDHT_COUNT: "2000"
   app:
     shell: nix develop --command go run . worker run --keys http_server
     env:
       XDG_CONFIG_HOME: scratch/dht-test
       XDG_DATA_HOME: scratch/dht-test
-      DB_DSN: scratch/dht-test/dht.db
+      DB_DSN: scratch/bitmagnet.db
       DB_WRITE_INTERVAL: "5s"
       DHT_CRAWLER_BOOTSTRAP_NODES: "127.0.0.1:6889"
       DHT_CRAWLER_INFO_HASH_TRIAGE_INTERVAL: "5s"

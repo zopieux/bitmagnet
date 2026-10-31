@@ -29,9 +29,7 @@ type processor struct {
 	tmdbEnabled     bool
 	dao             *dao.Query
 	blockingManager blocking.Manager
-	bannedAction    classify.BannedAction
-	pornAction      classify.PornAction
-	scriptActions   map[classify.Script]classify.ScriptAction
+	classifyConfig  classify.Config
 }
 
 type MissingHashesError struct {
@@ -101,39 +99,14 @@ func (c processor) Process(ctx context.Context, params MessageParams) error {
 	}
 
 	for _, torrent := range searchResult.Torrents {
-		if classify.IsBannedTorrent(torrent) {
-			switch c.bannedAction {
-			case classify.BannedActionKeep:
-			case classify.BannedActionArchive:
+		if action := c.classifyConfig.ActionFor(torrent); action != classify.ActionKeep {
+			switch action {
+			case classify.ActionArchive:
 				infoHashesToArchive = append(infoHashesToArchive, torrent.InfoHash)
-				continue
 			default:
 				infoHashesToDelete = append(infoHashesToDelete, torrent.InfoHash)
-				continue
 			}
-		}
-
-		if classify.IsPornTorrent(torrent) && !classify.IsMostlyAudioTorrent(torrent) {
-			switch c.pornAction {
-			case classify.PornActionKeep:
-			case classify.PornActionArchive:
-				infoHashesToArchive = append(infoHashesToArchive, torrent.InfoHash)
-				continue
-			default:
-				infoHashesToDelete = append(infoHashesToDelete, torrent.InfoHash)
-				continue
-			}
-		}
-
-		if scriptAction, matched := classify.MatchScriptAction(torrent, c.scriptActions); matched {
-			switch scriptAction {
-			case classify.ScriptActionArchive:
-				infoHashesToArchive = append(infoHashesToArchive, torrent.InfoHash)
-				continue
-			default:
-				infoHashesToDelete = append(infoHashesToDelete, torrent.InfoHash)
-				continue
-			}
+			continue
 		}
 
 		wg.Add(1)

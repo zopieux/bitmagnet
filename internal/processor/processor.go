@@ -29,6 +29,7 @@ type processor struct {
 	tmdbEnabled     bool
 	dao             *dao.Query
 	blockingManager blocking.Manager
+	bannedAction    classify.BannedAction
 }
 
 type MissingHashesError struct {
@@ -78,11 +79,12 @@ func (c processor) Process(ctx context.Context, params MessageParams) error {
 	}
 
 	var (
-		mtx                sync.Mutex
-		wg                 sync.WaitGroup
-		errs               []error
-		idsToDelete        []string
-		infoHashesToDelete []protocol.ID
+		mtx                 sync.Mutex
+		wg                  sync.WaitGroup
+		errs                []error
+		idsToDelete         []string
+		infoHashesToDelete  []protocol.ID
+		infoHashesToArchive []protocol.ID
 	)
 
 	tcs := make([]model.TorrentContent, 0, len(searchResult.Torrents))
@@ -97,6 +99,18 @@ func (c processor) Process(ctx context.Context, params MessageParams) error {
 	}
 
 	for _, torrent := range searchResult.Torrents {
+		if classify.IsBannedTorrent(torrent) {
+			switch c.bannedAction {
+			case classify.BannedActionKeep:
+			case classify.BannedActionArchive:
+				infoHashesToArchive = append(infoHashesToArchive, torrent.InfoHash)
+				continue
+			default:
+				infoHashesToDelete = append(infoHashesToDelete, torrent.InfoHash)
+				continue
+			}
+		}
+
 		wg.Add(1)
 
 		go func(torrent model.Torrent) {
@@ -151,7 +165,7 @@ func (c processor) Process(ctx context.Context, params MessageParams) error {
 	wg.Wait()
 
 	if len(failedHashes) > 0 {
-		if len(tcs) == 0 {
+		if len(tcs) == 0 && len(infoHashesToDelete) == 0 && len(infoHashesToArchive) == 0 {
 			return errors.Join(errs...)
 		}
 
@@ -170,15 +184,16 @@ func (c processor) Process(ctx context.Context, params MessageParams) error {
 		}
 	}
 
-	if len(tcs) == 0 {
+	if len(tcs) == 0 && len(infoHashesToDelete) == 0 && len(infoHashesToArchive) == 0 {
 		return nil
 	}
 
 	return c.persist(ctx, persistPayload{
-		torrentContents:  tcs,
-		deleteIDs:        idsToDelete,
-		deleteInfoHashes: infoHashesToDelete,
-		addTags:          tagsToAdd,
+		torrentContents:   tcs,
+		deleteIDs:         idsToDelete,
+		deleteInfoHashes:  infoHashesToDelete,
+		archiveInfoHashes: infoHashesToArchive,
+		addTags:           tagsToAdd,
 	})
 }
 

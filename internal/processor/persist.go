@@ -12,10 +12,11 @@ import (
 )
 
 type persistPayload struct {
-	torrentContents  []model.TorrentContent
-	deleteIDs        []string
-	deleteInfoHashes []protocol.ID
-	addTags          map[protocol.ID]map[string]struct{}
+	torrentContents   []model.TorrentContent
+	deleteIDs         []string
+	deleteInfoHashes  []protocol.ID
+	archiveInfoHashes []protocol.ID
+	addTags           map[protocol.ID]map[string]struct{}
 }
 
 func (c processor) persist(ctx context.Context, payload persistPayload) error {
@@ -47,6 +48,12 @@ func (c processor) persist(ctx context.Context, payload persistPayload) error {
 				InfoHash: infoHash,
 				Name:     tag,
 			})
+		}
+	}
+
+	if len(payload.archiveInfoHashes) > 0 {
+		if archiveErr := c.blockingManager.Archive(ctx, payload.archiveInfoHashes); archiveErr != nil {
+			return archiveErr
 		}
 	}
 

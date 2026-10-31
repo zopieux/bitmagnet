@@ -1,6 +1,8 @@
 package processorfx
 
 import (
+	"github.com/bitmagnet-io/bitmagnet/internal/classify"
+	"github.com/bitmagnet-io/bitmagnet/internal/config/configfx"
 	"github.com/bitmagnet-io/bitmagnet/internal/processor"
 	batchqueue "github.com/bitmagnet-io/bitmagnet/internal/processor/batch/queue"
 	processorqueue "github.com/bitmagnet-io/bitmagnet/internal/processor/queue"
@@ -10,6 +12,7 @@ import (
 func New() fx.Option {
 	return fx.Module(
 		"processor",
+		configfx.NewConfigModule[classify.Config]("classify", classify.NewDefaultConfig()),
 		fx.Provide(
 			processor.New,
 			processorqueue.New,

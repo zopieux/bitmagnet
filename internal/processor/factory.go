@@ -2,6 +2,7 @@ package processor
 
 import (
 	"github.com/bitmagnet-io/bitmagnet/internal/blocking"
+	"github.com/bitmagnet-io/bitmagnet/internal/classify"
 	"github.com/bitmagnet-io/bitmagnet/internal/database/dao"
 	"github.com/bitmagnet-io/bitmagnet/internal/database/search"
 	"github.com/bitmagnet-io/bitmagnet/internal/lazy"
@@ -14,6 +15,7 @@ type Params struct {
 	fx.In
 	TmdbClient      lazy.Lazy[tmdb.Client]
 	TmdbConfig      tmdb.Config
+	ClassifyConfig  classify.Config
 	Search          lazy.Lazy[search.Search]
 	Dao             lazy.Lazy[*dao.Query]
 	BlockingManager lazy.Lazy[blocking.Manager]
@@ -54,6 +56,7 @@ func New(p Params) Result {
 				blockingManager: bm,
 				tmdbClient:      tc,
 				tmdbEnabled:     tmdbEnabled,
+				bannedAction:    p.ClassifyConfig.BannedAction,
 			}, nil
 		}),
 	}

@@ -30,6 +30,7 @@ type processor struct {
 	dao             *dao.Query
 	blockingManager blocking.Manager
 	bannedAction    classify.BannedAction
+	scriptActions   map[classify.Script]classify.ScriptAction
 }
 
 type MissingHashesError struct {
@@ -103,6 +104,17 @@ func (c processor) Process(ctx context.Context, params MessageParams) error {
 			switch c.bannedAction {
 			case classify.BannedActionKeep:
 			case classify.BannedActionArchive:
+				infoHashesToArchive = append(infoHashesToArchive, torrent.InfoHash)
+				continue
+			default:
+				infoHashesToDelete = append(infoHashesToDelete, torrent.InfoHash)
+				continue
+			}
+		}
+
+		if scriptAction, matched := classify.MatchScriptAction(torrent, c.scriptActions); matched {
+			switch scriptAction {
+			case classify.ScriptActionArchive:
 				infoHashesToArchive = append(infoHashesToArchive, torrent.InfoHash)
 				continue
 			default:

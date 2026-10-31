@@ -54,6 +54,58 @@ func TestPornKeywords(t *testing.T) {
 		"BUG-012-U",
 		"Die Sex Nanny Collection",
 		"Shemale Sex Pistols 5 DVDRip",
+
+		// New studio and genre keywords plus concatenated (substring) matches,
+		// spot-checked from scratch/many_names.txt.
+		"MetArt.com 2023-07-09",
+		"Marc Dorcel - Jolies Petites Garces",
+		"[21Sextury] - ClubSandy - Kassondra Raine (Kassondra's Naughty Massage) [NEW May 1, 2016]",
+		"[ExxxtraSmall] Myra Moans Pop My Tiny Cherry (26.06.22)[720p][x264][xFans].mp4",
+		"Xnxx v1.53 [18+ Adult Content] Premium Mod Apk {CracksHash}",
+		"Futanari",
+		"[Umaya (UMA)] Okitsune Futa Hour 3 (SCANMTL)",
+		"[jap loli] Nova Scotia Girl 5_CHILD ASIAN-PTHC.wmv",
+		"[Ishigaki Takashi] Ecchi na Onee-san-tachi ni Beach de Gyakunansareta Ken (Mahou Shoujo Lyrical Nanoha) [English].zip",
+		"[BrazzersExxtra] Madison Ivy - Return Of Ivy (23.07.2017)",
+		"ShemaleJapanHardcore - Teen Newhalf Sayaka Ayasaki",
+		"[DeviceBondage] Melissa Stratton Testing Melissas Limits (26.08.31)[720p][xFans].mp4",
+		"Incesto a Budapest 1995 DVDRip",
+		"[OnlyTeenBlowjobs] Blake Blossom [21.11.11][720p].mp4",
+		"StraponDreamer - Cleo - The Black Hole",
+		"[CzechGangBang] Episodes 13 14 15",
+
+		// The "incesticide" allowlist entry must not suppress a name that
+		// also carries another strong indicator.
+		"Incesticide XXX",
+
+		// ai-generated packs (user-accepted stretch): must match with no
+		// separator, with each common separator, and with repeated spaces.
+		"aigenerated",
+		"ai_generated",
+		"ai generated",
+		"ai   generated",
+		"[LunarARTNSFW] Elinalise Dragonroad 1 (Patreon) [AI Generated] Torrent",
+
+		// Whole-word NSFW/Nsfw (case-sensitive; lowercase "nsfw" must NOT
+		// match). Real names from scratch/many_names.txt.
+		"NSFW",
+		"Nsfw",
+		"[KALA AI NSFW] sailor moon.zip",
+		"Nekokoyoshi Cosplay NSFW",
+		"Lezhin GL NSFW (Digital) (Cobalt001)",
+		"[Niliu Chahui (Sela)] Girls and the King's Tea Party [English] [Lei Scans][NSFW].zip",
+		"38GB_EXCLUSIVE_NU Menareslaves Foot Worship Katy Perry Fappening Katheryn Winnick Nsfw Scarlett Johansson Nudew",
+
+		// The "shameless" allowlist entry must not suppress a name that
+		// also carries another strong indicator.
+		"Shameless NSFW XXX",
+
+		// "hand job" with a space and "edge play" (real names from
+		// scratch/many_names.txt spot-checks).
+		"MARK'S HEAD BOBBERS & HAND JOBBERS - Ultimate edge play.mp4",
+		"Edge play with Little Mina Little .mp4",
+		"MHBHJ - Edge play with Remy LaCroix, 2.mp4",
+		"Hand Job",
 	} {
 		assert.True(t, IsPorn(text), "expected %q to be porn", text)
 	}
@@ -115,6 +167,60 @@ func TestMainstreamNotPorn(t *testing.T) {
 		"io-197804",
 		"9130378401474861131.la]star-918",
 		"Sexo às Avessas (1982)",
+
+		// Anti-regression names from scratch/many_names.txt spot-checks:
+		// mainstream titles and near-misses that must stay unflagged.
+		"Oxxxymiron  [FLAC]",
+		"xxxHOLiC OVA-2 [BDRemux]",
+		"The.Simpsons.S33E03.Treehouse.of.Horror.XXXII.720p.WEBRip.2CH.x265.HEVC-PSA.mkv",
+		"XXXL_ 13",
+		"the.shards.s01.HDR.D.2.0.18+.web-dlrip.xvid.ac3.-hqh",
+		"www.UIndex.org    -    Vantage Point 2008 NORDiC 1080p WEB-DL H 264 DDP5 1-ADDICTION",
+		"Skyfall 007 James Bond (2012).DvdRip.HQ-BBW",
+		"GUNDAM Series (Pack 5) - Complete MSG 00, Unicorn, BBW, AGE - 720p DUAL AUDIO x264",
+		"Clark Terry - Porgy & Bess (2004) [EAC-APE]",
+		"The.Vixens.Of.Kung.Fu.1975.BDRip.x264-LATENCY[rarbg]",
+		"S04E24 - Family Guy - 424 - Peterotica.avi",
+		"Atrax Morgue - 1996 - Autoerotic Death",
+		"Pawn.Stars.S08E82.Playboys.and.Players.HDTV.x264-mMx",
+		"Alma.Wants.New.Playmates.2024.1080p.WEBRip.Legendado.mkv",
+		"American.Dad!.S17E03.Cheek.to.Cheek.A.Strippers.Story.1080p.AMZN.WEB-DL.DD+5.1.H.264-CtrlHD",
+		"www.UIndex.org    -    Vanderpump Rules S12E10 Threesomes a Crowd 1080p AMZN WEB-DL DDP2 0 H 264-NTb",
+		"Prince 1990-06-19 London (Nude Tour 1990 Part 1+2 - Exile Records CD 4001-4002)",
+		"Evanovich_Janet-Naughty_Neighbour.epub",
+		"Wicked.Part.I.2024.D.WEB-DLRip.1.46Gb.MegaPeer",
+		"[Teenfuns]_Margarita(1928-pictures)",
+		// "Lolita" must not match the "loli" token and "Futara" must not
+		// match the "futa" token (trailing letters break the boundary).
+		"Lolita",
+		"Futara",
+
+		// Nirvana's "Incesticide" album must not be flagged by the "incest"
+		// wildcard (spot-checked from scratch/many_names.txt).
+		"1992 - Incesticide",
+		"Nirvana - Incesticide - 1990 [FLAC] [RLG]",
+		"Nirvana - Incesticide (1992)(US)[24-96][FLAC]",
+
+		// "ai" inside a longer word must not trigger the ai-generated
+		// keyword (leading token boundary required).
+		"Samurai Generated Stories",
+
+		// Lowercase "nsfw" is not a keyword (case-sensitive NSFW/Nsfw
+		// only): software and dataset names must stay unflagged.
+		"wallhaven-nsfw",
+		"TostAI_nsfw-image-detection-large",
+		"turk nsfw pack.stl",
+
+		// Mainstream names carrying an uppercase NSFW tag (spot-checked
+		// from scratch/many_names.txt); suppressed via the allowlist.
+		"www.UIndex.org    -    Shameless US S06E06 NSFW 1080p REPACK AMZN WEBRip DD5 1 x264-NTb",
+		"Tyga-NSFW-(2025)",
+
+		// "edge of play" must not match "edge\\s?play" (only an optional
+		// single space between the words), and "handjob" glued to a
+		// preceding word has no leading boundary.
+		"Edge of Play",
+		"Mayashandjobs",
 	} {
 		assert.False(t, IsPorn(text), "expected %q not to be porn", text)
 	}

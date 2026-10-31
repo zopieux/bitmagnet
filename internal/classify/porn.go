@@ -18,9 +18,14 @@ var pornMainstreamAllowlist = []string{
 	`kiss\s+kiss\s+bang\s+bang`,
 	`bang\s+bang\s+baby`,
 	`chitty\s+chitty\s+bang\s+bang`,
+	`incesticide`,
+	`shameless`,
+	`tyga`,
 }
 
 var pornKeywords = []string{
+	`21sextury`,
+	`ai[\.-_\s]*generated`,
 	`anal`,
 	`ass(?:es)?`,
 	`bang(?:bros|ing)`,
@@ -29,10 +34,13 @@ var pornKeywords = []string{
 	`blacked(?:raw)?`,
 	`brattysis`,
 	`busty`,
-	`blowjobs?`,
-	`bondage`,
 	`boob\w*`,
-	`brazzers`,
+	`dorcel`,
+	`ecchi`,
+	`edge\s?play`,
+	`exxxtrasmall`,
+	`futa`,
+	`futanari`,
 	`caribbeancom`,
 	`chaturbate`,
 	`cocks?`,
@@ -60,13 +68,12 @@ var pornKeywords = []string{
 	`fuck\w*`,
 	`gangbang`,
 	`gloryhole\w*`,
-	`handjob`,
+	`hand\s?job\w*`,
 	`hardcore`,
 	`hegre`,
 	`hentai`,
 	`horny`,
 	`heyzo`,
-	`incest`,
 	`interracial`,
 	`jav`,
 	`javhd`,
@@ -77,7 +84,9 @@ var pornKeywords = []string{
 	`legalporno`,
 	`lesbian[sx]?`,
 	`lewd\w*`,
+	`loli`,
 	`masturbat\w*`,
+	`metart`,
 	`manyvids`,
 	`mature4k`,
 	`mofos`,
@@ -107,7 +116,6 @@ var pornKeywords = []string{
 	`seduc\w*`,
 	`sexart`,
 	`sex\w*`,
-	`shemale`,
 	`sislovesme`,
 	`sissy`,
 	`slut\w*`,
@@ -125,6 +133,7 @@ var pornKeywords = []string{
 	`tonguejob`,
 	`topless`,
 	`tokyo[\s_-]?hot`,
+	`xnxx`,
 	`tushy(?:raw)?`,
 	`transsexual`,
 	`twistys`,
@@ -133,6 +142,26 @@ var pornKeywords = []string{
 	`wank\w*`,
 	`x[-\s_]?art`,
 	`xxx`,
+}
+
+// pornWildcardKeywords are explicit porn terms matched as substrings without
+// word boundaries. This catches concatenated studio and release-group names
+// such as "BrazzersExxtra", "ShemaleJapan" or "DeviceBondage" that a token
+// match would miss. Every term is long and unambiguous, so it cannot occur
+// inside an unrelated word (unlike short terms such as "ass" or "cum").
+var pornWildcardKeywords = []string{
+	`blowjob`,
+	`bondage`,
+	`brazzers`,
+	`deepthroat`,
+	`fuck`,
+	`gangbang`,
+	`gloryhole`,
+	`incest`,
+	`porn`,
+	`shemale`,
+	`strapon`,
+	`wank`,
 }
 
 var pornSubstringKeywords = []string{
@@ -231,6 +260,49 @@ var pornSubstringKeywords = []string{
 	`大奶`,
 }
 
+// pornWildcardBlocklist maps a wildcard keyword to substrings that disable
+// it. "Incesticide" is a Nirvana album, not a hit for the "incest"
+// wildcard. A name with a blocked keyword still matches through every other
+// wildcard keyword, and the mainstream allowlist (e.g. "incesticide") can
+// suppress the name once no strong indicator remains.
+var pornWildcardBlocklist = map[string][]string{
+	`incest`: {"incesticide"},
+}
+
+// wildcardPatternsWithout holds, for each blocked keyword, the wildcard
+// pattern rebuilt without that keyword.
+var wildcardPatternsWithout = buildWildcardPatternsWithout()
+
+func buildWildcardPatternsWithout() map[string]*regexp.Regexp {
+	patterns := make(map[string]*regexp.Regexp, len(pornWildcardBlocklist))
+	for kw := range pornWildcardBlocklist {
+		kept := make([]string, 0, len(pornWildcardKeywords))
+		for _, k := range pornWildcardKeywords {
+			if k != kw {
+				kept = append(kept, k)
+			}
+		}
+		patterns[kw] = regexp.MustCompile(
+			`(?i)(?:` + strings.Join(kept, "|") + `|xxx(?:$|` + pornBoundary + `))`,
+		)
+	}
+	return patterns
+}
+
+// hasPornWildcard reports whether text matches any wildcard keyword that is
+// not disabled by pornWildcardBlocklist for this text.
+func hasPornWildcard(text string) bool {
+	lower := strings.ToLower(text)
+	for kw, blocks := range pornWildcardBlocklist {
+		for _, b := range blocks {
+			if strings.Contains(lower, b) {
+				return wildcardPatternsWithout[kw].MatchString(text)
+			}
+		}
+	}
+	return pornWildcardPattern.MatchString(text)
+}
+
 // pornBoundary matches a single character that is not a Unicode letter or
 // digit. Unlike the ASCII-only `\W`, this treats accented and CJK characters
 // as word characters, so e.g. "pov" does not match inside "povídky" and
@@ -265,13 +337,24 @@ var (
 	// pornWildcardPattern matches explicit porn terms as substrings. "xxx"
 	// requires a trailing boundary so Roman numerals such as "XXXI" (31) do
 	// not match, while "StallionXXX" (no leading boundary) still does.
-	pornWildcardPattern = regexp.MustCompile(`(?i)(?:fuck|gloryhole|porn|wank|xxx(?:$|` + pornBoundary + `))`)
+	pornWildcardPattern = regexp.MustCompile(
+		`(?i)(?:` + strings.Join(pornWildcardKeywords, "|") + `|xxx(?:$|` + pornBoundary + `))`,
+	)
 	pornSubstringPattern = regexp.MustCompile(`(?i)(?:` + strings.Join(pornSubstringKeywords, "|") + `)`)
 	// pornNtrPattern matches the netorare tag "NTR" as a standalone ASCII
 	// word only. A plain substring match would hit English words such as
 	// "Control", "KONTRAST" and "Country"; CJK characters are not ASCII
 	// letters, so tags like "NTR系" still match.
 	pornNtrPattern = regexp.MustCompile(`(?i)(?:^|[^a-z])ntr(?:[^a-z]|$)`)
+	// pornCaseSensitiveTokenPattern matches whole-word "NSFW"/"Nsfw" in
+	// exactly these cases; the shared token pattern is case-insensitive,
+	// so it lives separately. Lowercase "nsfw" is deliberately excluded:
+	// it appears in software and dataset names (wallhaven-nsfw,
+	// TostAI_nsfw-image-detection). Like the other weak keywords it is
+	// not a strong indicator, so the mainstream allowlist may suppress it.
+	pornCaseSensitiveTokenPattern = regexp.MustCompile(
+		`(?:^|` + pornBoundary + `)(?:NSFW|Nsfw)(?:$|` + pornBoundary + `)`,
+	)
 )
 
 func strongPornKeywords() []string {
@@ -372,7 +455,8 @@ func IsPorn(text string) bool {
 	}
 
 	return pornTokenPattern.MatchString(text) ||
-		pornWildcardPattern.MatchString(text) ||
+		pornCaseSensitiveTokenPattern.MatchString(text) ||
+		hasPornWildcard(text) ||
 		pornSubstringPattern.MatchString(text) ||
 		pornNtrPattern.MatchString(text) ||
 		isJavCode(text)
@@ -382,7 +466,7 @@ func IsPorn(text string) bool {
 // signal that the mainstream-title allowlist must not suppress.
 func hasStrongPornIndicator(text string) bool {
 	return pornStrongTokenPattern.MatchString(text) ||
-		pornWildcardPattern.MatchString(text) ||
+		hasPornWildcard(text) ||
 		pornSubstringPattern.MatchString(text) ||
 		pornNtrPattern.MatchString(text) ||
 		isJavCode(text)

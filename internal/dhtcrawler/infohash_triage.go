@@ -43,6 +43,10 @@ func (c *crawler) runInfoHashTriage(ctx context.Context) {
 				break
 			}
 
+			if blocked := len(allHashes) - len(filteredHashes); blocked > 0 {
+				c.statsBlocked.Add(int64(blocked))
+			}
+
 			if len(filteredHashes) == 0 {
 				break
 			}

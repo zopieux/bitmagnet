@@ -64,6 +64,7 @@ type crawler struct {
 	statsSampled   atomic.Int64
 	statsNew       atomic.Int64
 	statsPersisted atomic.Int64
+	statsBlocked   atomic.Int64
 	statsMetaOk    atomic.Int64
 	statsMetaErr   atomic.Int64
 }
@@ -101,7 +102,7 @@ func (c *crawler) runStatsLogger(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	var prevSampled, prevNew, prevPersisted, prevMetaOk, prevMetaErr int64
+	var prevSampled, prevNew, prevPersisted, prevBlocked, prevMetaOk, prevMetaErr int64
 
 	for {
 		select {
@@ -111,14 +112,15 @@ func (c *crawler) runStatsLogger(ctx context.Context) {
 			sampled := c.statsSampled.Load()
 			newHashes := c.statsNew.Load()
 			persisted := c.statsPersisted.Load()
+			blocked := c.statsBlocked.Load()
 			metaOk := c.statsMetaOk.Load()
 			metaErr := c.statsMetaErr.Load()
 			c.logger.Infof(
-				"crawler stats (last 30s): sampled=%d new=%d persisted=%d metadata_ok=%d metadata_err=%d",
-				sampled-prevSampled, newHashes-prevNew, persisted-prevPersisted,
+				"crawler stats (last 30s): sampled=%d new=%d persisted=%d blocked=%d metadata_ok=%d metadata_err=%d",
+				sampled-prevSampled, newHashes-prevNew, persisted-prevPersisted, blocked-prevBlocked,
 				metaOk-prevMetaOk, metaErr-prevMetaErr,
 			)
-			prevSampled, prevNew, prevPersisted, prevMetaOk, prevMetaErr = sampled, newHashes, persisted, metaOk, metaErr
+			prevSampled, prevNew, prevPersisted, prevBlocked, prevMetaOk, prevMetaErr = sampled, newHashes, persisted, blocked, metaOk, metaErr
 		}
 	}
 }

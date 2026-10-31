@@ -210,9 +210,33 @@
           "legendFormat": "{{entity}} ({{action}})",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "rate(bitmagnet_blocking_skipped_total[$__rate_interval])*60",
+          "instant": false,
+          "legendFormat": "Torrent (already blocked)",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "rate(bitmagnet_blocking_blocked_total[$__rate_interval])*60",
+          "instant": false,
+          "legendFormat": "Torrent ({{action}})",
+          "range": true,
+          "refId": "C"
         }
       ],
-      "title": "Torrents & sources persisted per minute",
+      "title": "Torrents persisted & blocked per minute",
       "type": "timeseries"
     },
     {

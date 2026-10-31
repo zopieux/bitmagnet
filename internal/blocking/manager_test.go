@@ -12,6 +12,8 @@ import (
 	migrationssql "github.com/bitmagnet-io/bitmagnet/migrations"
 	_ "github.com/glebarez/go-sqlite"
 	goose "github.com/pressly/goose/v3"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -130,3 +132,56 @@ func TestBlockingManagerArchive(t *testing.T) {
 	require.NoError(t, archiveDB.QueryRow(`SELECT COUNT(*) FROM torrents WHERE info_hash = ?`, archivedHash[:]).Scan(&archiveCount))
 	assert.Equal(t, 1, archiveCount, "archived torrent should be stored in archive db")
 }
+
+func TestBlockingManagerMetrics(t *testing.T) {
+	ctx := context.Background()
+	db := testDB(t)
+
+	res := New(Params{
+		DB:        lazy.New(func() (*sql.DB, error) { return db, nil }),
+		FlushWait: &sync.WaitGroup{},
+	})
+
+	m, err := res.Manager.Get()
+	require.NoError(t, err)
+
+	reg := prometheus.NewRegistry()
+	require.NoError(t, reg.Register(res.BlockedTotal))
+	require.NoError(t, reg.Register(res.SkippedTotal))
+
+	var blockedHash, freshHash protocol.ID
+	copy(blockedHash[:], "blocked-hash-1!!!!!!")
+	copy(freshHash[:], "fresh-hash-2!!!!!!!!")
+
+	require.NoError(t, m.Block(ctx, []protocol.ID{blockedHash}, true))
+
+	filtered, err := m.Filter(ctx, []protocol.ID{blockedHash, freshHash})
+	require.NoError(t, err)
+	assert.Equal(t, []protocol.ID{freshHash}, filtered)
+
+	metricFamilies, err := reg.Gather()
+	require.NoError(t, err)
+
+	byName := make(map[string]*dto.MetricFamily)
+	for _, mf := range metricFamilies {
+		byName[*mf.Name] = mf
+	}
+
+	require.Contains(t, byName, "bitmagnet_blocking_blocked_total")
+	require.Contains(t, byName, "bitmagnet_blocking_skipped_total")
+
+	mfBlocked := byName["bitmagnet_blocking_blocked_total"]
+	var blockedCount float64
+	for _, metric := range mfBlocked.Metric {
+		for _, label := range metric.Label {
+			if *label.Name == "action" && *label.Value == "blocked" {
+				blockedCount = *metric.Counter.Value
+			}
+		}
+	}
+	assert.Equal(t, float64(1), blockedCount)
+
+	mfSkipped := byName["bitmagnet_blocking_skipped_total"]
+	assert.Equal(t, float64(1), *mfSkipped.Metric[0].Counter.Value)
+}
+

@@ -14,6 +14,7 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/archive"
 	"github.com/bitmagnet-io/bitmagnet/internal/bloom"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Manager interface {
@@ -21,6 +22,15 @@ type Manager interface {
 	Block(ctx context.Context, hashes []protocol.ID, flush bool) error
 	Archive(ctx context.Context, hashes []protocol.ID) error
 	Flush(ctx context.Context) error
+}
+
+type Option func(*manager)
+
+func WithMetrics(blockedTotal *prometheus.CounterVec, skippedTotal prometheus.Counter) Option {
+	return func(m *manager) {
+		m.blockedTotal = blockedTotal
+		m.skippedTotal = skippedTotal
+	}
 }
 
 type manager struct {
@@ -32,16 +42,22 @@ type manager struct {
 	maxBufferSize int
 	lastFlushedAt time.Time
 	maxFlushWait  time.Duration
+	blockedTotal  *prometheus.CounterVec
+	skippedTotal  prometheus.Counter
 }
 
-func NewManager(db *sql.DB, archivePath string, maxFlushWait time.Duration) Manager {
-	return &manager{
+func NewManager(db *sql.DB, archivePath string, maxFlushWait time.Duration, options ...Option) Manager {
+	m := &manager{
 		db:            db,
 		archivePath:   archivePath,
 		buffer:        make(map[protocol.ID]struct{}, 1000),
 		maxBufferSize: 1000,
 		maxFlushWait:  maxFlushWait,
 	}
+	for _, opt := range options {
+		opt(m)
+	}
+	return m
 }
 
 func (m *manager) Filter(ctx context.Context, hashes []protocol.ID) ([]protocol.ID, error) {
@@ -74,6 +90,12 @@ func (m *manager) Filter(ctx context.Context, hashes []protocol.ID) ([]protocol.
 		filtered = append(filtered, hash)
 	}
 
+	if m.skippedTotal != nil {
+		if skipped := len(hashes) - len(filtered); skipped > 0 {
+			m.skippedTotal.Add(float64(skipped))
+		}
+	}
+
 	return filtered, nil
 }
 
@@ -83,6 +105,10 @@ func (m *manager) Block(ctx context.Context, hashes []protocol.ID, flush bool) e
 
 	for _, hash := range hashes {
 		m.buffer[hash] = struct{}{}
+	}
+
+	if m.blockedTotal != nil && len(hashes) > 0 {
+		m.blockedTotal.WithLabelValues("blocked").Add(float64(len(hashes)))
 	}
 
 	if flush || m.shouldFlush() {
@@ -106,6 +132,10 @@ func (m *manager) Archive(ctx context.Context, hashes []protocol.ID) error {
 
 	for _, hash := range hashes {
 		m.buffer[hash] = struct{}{}
+	}
+
+	if m.blockedTotal != nil && len(hashes) > 0 {
+		m.blockedTotal.WithLabelValues("archived").Add(float64(len(hashes)))
 	}
 
 	return m.flush(ctx)

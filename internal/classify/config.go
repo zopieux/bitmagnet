@@ -8,6 +8,14 @@ const (
 	BannedActionArchive BannedAction = "archive"
 )
 
+type PornAction string
+
+const (
+	PornActionKeep    PornAction = "keep"
+	PornActionDelete  PornAction = "delete"
+	PornActionArchive PornAction = "archive"
+)
+
 type ScriptAction string
 
 const (
@@ -18,6 +26,7 @@ const (
 
 type Config struct {
 	BannedAction   BannedAction `validate:"oneof=keep delete archive"`
+	PornAction     PornAction   `validate:"oneof=keep delete archive"`
 	CyrillicAction ScriptAction `validate:"oneof=keep delete archive"`
 	KoreanAction   ScriptAction `validate:"oneof=keep delete archive"`
 	ChineseAction  ScriptAction `validate:"oneof=keep delete archive"`
@@ -28,6 +37,7 @@ type Config struct {
 func NewDefaultConfig() Config {
 	return Config{
 		BannedAction:   BannedActionDelete,
+		PornAction:     PornActionDelete,
 		CyrillicAction: ScriptActionKeep,
 		KoreanAction:   ScriptActionKeep,
 		ChineseAction:  ScriptActionKeep,

@@ -30,6 +30,7 @@ type processor struct {
 	dao             *dao.Query
 	blockingManager blocking.Manager
 	bannedAction    classify.BannedAction
+	pornAction      classify.PornAction
 	scriptActions   map[classify.Script]classify.ScriptAction
 }
 
@@ -104,6 +105,18 @@ func (c processor) Process(ctx context.Context, params MessageParams) error {
 			switch c.bannedAction {
 			case classify.BannedActionKeep:
 			case classify.BannedActionArchive:
+				infoHashesToArchive = append(infoHashesToArchive, torrent.InfoHash)
+				continue
+			default:
+				infoHashesToDelete = append(infoHashesToDelete, torrent.InfoHash)
+				continue
+			}
+		}
+
+		if classify.IsPornTorrent(torrent) {
+			switch c.pornAction {
+			case classify.PornActionKeep:
+			case classify.PornActionArchive:
 				infoHashesToArchive = append(infoHashesToArchive, torrent.InfoHash)
 				continue
 			default:

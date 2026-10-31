@@ -57,6 +57,7 @@ func New(p Params) Result {
 				tmdbClient:      tc,
 				tmdbEnabled:     tmdbEnabled,
 				bannedAction:    p.ClassifyConfig.BannedAction,
+				pornAction:      p.ClassifyConfig.PornAction,
 				scriptActions: map[classify.Script]classify.ScriptAction{
 					classify.ScriptCyrillic: p.ClassifyConfig.CyrillicAction,
 					classify.ScriptKorean:   p.ClassifyConfig.KoreanAction,

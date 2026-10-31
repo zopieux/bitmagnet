@@ -1,13 +1,15 @@
 enum ContentType {
   movie
   tv_show
+  anime
+  porn
   music
-  ebook
-  comic
   audiobook
-  game
+  podcast
+  book
   software
-  xxx
+  game
+  education
 }
 
 enum FacetLogic {

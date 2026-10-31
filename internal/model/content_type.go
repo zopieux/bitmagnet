@@ -1,7 +1,7 @@
 package model
 
 // ContentType represents the type of content
-// ENUM(movie, tv_show, music, ebook, comic, audiobook, game, software, xxx)
+// ENUM(movie, tv_show, anime, porn, music, audiobook, podcast, book, software, game, education)
 type ContentType string
 
 func (c ContentType) Label() string {
@@ -13,5 +13,5 @@ func (c ContentType) IsNil() bool {
 }
 
 func (c ContentType) IsVideo() bool {
-	return c == ContentTypeMovie || c == ContentTypeTvShow || c == ContentTypeXxx
+	return c == ContentTypeMovie || c == ContentTypeTvShow || c == ContentTypeAnime || c == ContentTypePorn
 }

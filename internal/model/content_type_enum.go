@@ -18,13 +18,15 @@ import (
 const (
 	ContentTypeMovie     ContentType = "movie"
 	ContentTypeTvShow    ContentType = "tv_show"
+	ContentTypeAnime     ContentType = "anime"
+	ContentTypePorn      ContentType = "porn"
 	ContentTypeMusic     ContentType = "music"
-	ContentTypeEbook     ContentType = "ebook"
-	ContentTypeComic     ContentType = "comic"
 	ContentTypeAudiobook ContentType = "audiobook"
-	ContentTypeGame      ContentType = "game"
+	ContentTypePodcast   ContentType = "podcast"
+	ContentTypeBook      ContentType = "book"
 	ContentTypeSoftware  ContentType = "software"
-	ContentTypeXxx       ContentType = "xxx"
+	ContentTypeGame      ContentType = "game"
+	ContentTypeEducation ContentType = "education"
 )
 
 var ErrInvalidContentType = fmt.Errorf("not a valid ContentType, try [%s]", strings.Join(_ContentTypeNames, ", "))
@@ -32,13 +34,15 @@ var ErrInvalidContentType = fmt.Errorf("not a valid ContentType, try [%s]", stri
 var _ContentTypeNames = []string{
 	string(ContentTypeMovie),
 	string(ContentTypeTvShow),
+	string(ContentTypeAnime),
+	string(ContentTypePorn),
 	string(ContentTypeMusic),
-	string(ContentTypeEbook),
-	string(ContentTypeComic),
 	string(ContentTypeAudiobook),
-	string(ContentTypeGame),
+	string(ContentTypePodcast),
+	string(ContentTypeBook),
 	string(ContentTypeSoftware),
-	string(ContentTypeXxx),
+	string(ContentTypeGame),
+	string(ContentTypeEducation),
 }
 
 // ContentTypeNames returns a list of possible string values of ContentType.
@@ -53,13 +57,15 @@ func ContentTypeValues() []ContentType {
 	return []ContentType{
 		ContentTypeMovie,
 		ContentTypeTvShow,
+		ContentTypeAnime,
+		ContentTypePorn,
 		ContentTypeMusic,
-		ContentTypeEbook,
-		ContentTypeComic,
 		ContentTypeAudiobook,
-		ContentTypeGame,
+		ContentTypePodcast,
+		ContentTypeBook,
 		ContentTypeSoftware,
-		ContentTypeXxx,
+		ContentTypeGame,
+		ContentTypeEducation,
 	}
 }
 
@@ -78,13 +84,15 @@ func (x ContentType) IsValid() bool {
 var _ContentTypeValue = map[string]ContentType{
 	"movie":     ContentTypeMovie,
 	"tv_show":   ContentTypeTvShow,
+	"anime":     ContentTypeAnime,
+	"porn":      ContentTypePorn,
 	"music":     ContentTypeMusic,
-	"ebook":     ContentTypeEbook,
-	"comic":     ContentTypeComic,
 	"audiobook": ContentTypeAudiobook,
-	"game":      ContentTypeGame,
+	"podcast":   ContentTypePodcast,
+	"book":      ContentTypeBook,
 	"software":  ContentTypeSoftware,
-	"xxx":       ContentTypeXxx,
+	"game":      ContentTypeGame,
+	"education": ContentTypeEducation,
 }
 
 // ParseContentType attempts to convert a string to a ContentType.

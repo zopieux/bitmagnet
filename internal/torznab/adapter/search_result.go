@@ -41,21 +41,19 @@ func torrentContentResultItemToTorznabResultItem(item search.TorrentContentResul
 		switch item.ContentType.ContentType {
 		case model.ContentTypeMovie:
 			categoryID = torznab.CategoryMovies.ID
-		case model.ContentTypeTvShow:
+		case model.ContentTypeTvShow, model.ContentTypeAnime:
 			categoryID = torznab.CategoryTV.ID
-		case model.ContentTypeMusic:
+		case model.ContentTypeMusic, model.ContentTypePodcast:
 			categoryID = torznab.CategoryAudio.ID
-		case model.ContentTypeEbook:
+		case model.ContentTypeBook:
 			categoryID = torznab.CategoryBooks.ID
-		case model.ContentTypeComic:
-			categoryID = torznab.CategoryBooksComics.ID
 		case model.ContentTypeAudiobook:
 			categoryID = torznab.CategoryAudioAudiobook.ID
-		case model.ContentTypeSoftware:
+		case model.ContentTypeSoftware, model.ContentTypeEducation:
 			categoryID = torznab.CategoryPC.ID
 		case model.ContentTypeGame:
 			categoryID = torznab.CategoryPCGames.ID
-		case model.ContentTypeXxx:
+		case model.ContentTypePorn:
 			categoryID = torznab.CategoryXXX.ID
 		}
 	}

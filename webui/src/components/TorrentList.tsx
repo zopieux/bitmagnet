@@ -550,13 +550,15 @@ export const TorrentList: Component = () => {
   const categories = [
     { value: 'movie', label: 'Movies' },
     { value: 'tv_show', label: 'TV Shows' },
+    { value: 'anime', label: 'Anime' },
+    { value: 'porn', label: 'Adult (Porn)' },
     { value: 'music', label: 'Music' },
-    { value: 'ebook', label: 'Ebooks' },
-    { value: 'comic', label: 'Comics' },
     { value: 'audiobook', label: 'Audiobooks' },
+    { value: 'podcast', label: 'Podcasts' },
+    { value: 'book', label: 'Books' },
     { value: 'software', label: 'Software' },
     { value: 'game', label: 'Games' },
-    { value: 'xxx', label: 'Adult (XXX)' },
+    { value: 'education', label: 'Education' },
   ];
 
   const fetchTorrents = async () => {

@@ -45,14 +45,16 @@ type contentKind struct {
 }
 
 var kinds = []contentKind{
-	{"movie", 45},
-	{"tv_show", 20},
+	{"movie", 35},
+	{"tv_show", 15},
+	{"anime", 10},
+	{"porn", 5},
 	{"music", 10},
-	{"ebook", 8},
 	{"audiobook", 5},
-	{"comic", 4},
-	{"game", 4},
+	{"podcast", 4},
+	{"book", 8},
 	{"software", 4},
+	{"game", 4},
 }
 
 func pickKind(rng *rand.Rand) string {
@@ -267,13 +269,11 @@ func generateTitleAndSize(rng *rand.Rand, kind string) (string, int, int64) {
 	case "music":
 		tracks := 8 + rng.Intn(14)
 		return fmt.Sprintf("%s %s - Album %d [FLAC]", adj, subj, year), tracks, int64(tracks) * 30_000_000
-	case "ebook":
+	case "book":
 		return fmt.Sprintf("%s %s %s by Author %d epub", adj, subj, work, rng.Intn(500)), 1, int64(1_000_000 + rng.Intn(20_000_000))
 	case "audiobook":
 		chapters := 10 + rng.Intn(20)
 		return fmt.Sprintf("%s %s %s (Audiobook)", adj, subj, work), chapters, int64(chapters) * 25_000_000
-	case "comic":
-		return fmt.Sprintf("%s %s Vol %d CBZ", adj, subj, 1+rng.Intn(30)), 1, int64(20_000_000 + rng.Intn(400_000_000))
 	case "game":
 		return fmt.Sprintf("%s %s %s - FitGirl Repack", adj, subj, work), 3 + rng.Intn(10), int64(2_000_000_000 + rng.Intn(90_000_000_000))
 	case "software":

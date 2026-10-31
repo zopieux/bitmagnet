@@ -75,7 +75,7 @@ func MovieDetailsToMovieModel(details MovieDetailsResponse) (movie model.Content
 	contentType := model.ContentTypeMovie
 
 	if details.Adult {
-		contentType = model.ContentTypeXxx
+		contentType = model.ContentTypePorn
 	}
 
 	return model.Content{
@@ -187,7 +187,7 @@ func ExternalSource(ref model.ContentRef) (externalSource string, externalID str
 	switch {
 	case (ref.Type == model.ContentTypeMovie ||
 		ref.Type == model.ContentTypeTvShow ||
-		ref.Type == model.ContentTypeXxx) &&
+		ref.Type == model.ContentTypePorn) &&
 		ref.Source == model.SourceImdb:
 		externalSource = "imdb_id"
 		externalID = ref.ID

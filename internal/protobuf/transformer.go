@@ -181,21 +181,19 @@ func NewContentType(ct model.NullContentType) Classification_ContentType {
 		switch ct.ContentType {
 		case model.ContentTypeMovie:
 			return Classification_movie
-		case model.ContentTypeTvShow:
+		case model.ContentTypeTvShow, model.ContentTypeAnime:
 			return Classification_tv_show
-		case model.ContentTypeMusic:
+		case model.ContentTypeMusic, model.ContentTypePodcast:
 			return Classification_music
-		case model.ContentTypeEbook:
+		case model.ContentTypeBook:
 			return Classification_ebook
-		case model.ContentTypeComic:
-			return Classification_comic
 		case model.ContentTypeAudiobook:
 			return Classification_audiobook
 		case model.ContentTypeGame:
 			return Classification_game
-		case model.ContentTypeSoftware:
+		case model.ContentTypeSoftware, model.ContentTypeEducation:
 			return Classification_software
-		case model.ContentTypeXxx:
+		case model.ContentTypePorn:
 			return Classification_xxx
 		}
 	}

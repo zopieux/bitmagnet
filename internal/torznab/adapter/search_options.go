@@ -34,8 +34,7 @@ func searchRequestToQueryOptions(r torznab.SearchRequest) ([]query.Option, error
 		options = append(options, query.Where(search.TorrentContentTypeCriteria(model.ContentTypeMusic)))
 	case torznab.FunctionBook:
 		options = append(options, query.Where(search.TorrentContentTypeCriteria(
-			model.ContentTypeEbook,
-			model.ContentTypeComic,
+			model.ContentTypeBook,
 			model.ContentTypeAudiobook,
 		)))
 	default:
@@ -123,22 +122,21 @@ func searchRequestToQueryOptions(r torznab.SearchRequest) ([]query.Option, error
 				)
 			}
 		case torznab.CategoryXXX.Has(cat):
-			catCriteria = append(catCriteria, search.TorrentContentTypeCriteria(model.ContentTypeXxx))
+			catCriteria = append(catCriteria, search.TorrentContentTypeCriteria(model.ContentTypePorn))
 		case torznab.CategoryPC.Has(cat):
 			catCriteria = append(catCriteria,
 				search.TorrentContentTypeCriteria(model.ContentTypeSoftware, model.ContentTypeGame))
 		case torznab.CategoryAudioAudiobook.Has(cat):
 			catCriteria = append(catCriteria, search.TorrentContentTypeCriteria(model.ContentTypeAudiobook))
 		case torznab.CategoryAudio.Has(cat):
-			catCriteria = append(catCriteria, search.TorrentContentTypeCriteria(model.ContentTypeMusic))
+			catCriteria = append(catCriteria, search.TorrentContentTypeCriteria(model.ContentTypeMusic, model.ContentTypePodcast))
 		case torznab.CategoryBooksComics.Has(cat):
-			catCriteria = append(catCriteria, search.TorrentContentTypeCriteria(model.ContentTypeComic))
+			catCriteria = append(catCriteria, search.TorrentContentTypeCriteria(model.ContentTypeBook))
 		case torznab.CategoryBooks.Has(cat):
-			options = append(options, query.Where(search.TorrentContentTypeCriteria(
-				model.ContentTypeEbook,
-				model.ContentTypeComic,
+			catCriteria = append(catCriteria, search.TorrentContentTypeCriteria(
+				model.ContentTypeBook,
 				model.ContentTypeAudiobook,
-			)))
+			))
 		}
 
 		if len(catCriteria) > 0 {

@@ -32,3 +32,4 @@ result
 result-*
 /app.pid
 docs/
+*.db

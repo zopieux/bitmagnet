@@ -1,6 +1,6 @@
 {
   description = "bitmagnet dev shell";
-  inputs.nixpkgs.url = "github:nixos/nixpkgs";
+  inputs.nixpkgs.url = "https://channels.nixos.org/nixpkgs-unstable/nixexprs.tar.zst";
   inputs.flake-utils.url = "github:numtide/flake-utils";
 
   outputs =
@@ -50,12 +50,14 @@
             packages =
               with pkgs;
               [
+                curl
                 go
                 mprocs
                 nodejs_24
                 prettier
                 protobuf
                 protoc-gen-go
+                sqlite
               ]
               ++ (
                 if stdenv.hostPlatform.isLinux then

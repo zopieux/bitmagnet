@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/blocking"
 	"github.com/bitmagnet-io/bitmagnet/internal/classify"
@@ -142,7 +143,7 @@ func (c processor) Process(ctx context.Context, params MessageParams) error {
 				failedHashes = append(failedHashes, torrent.InfoHash)
 				errs = append(errs, classifyErr)
 			} else {
-				torrentContent := newTorrentContent(torrent, cl)
+				torrentContent := NewTorrentContent(torrent, cl)
 
 				tcID := torrentContent.InferID()
 				for id := range thisDeleteIDs {
@@ -203,7 +204,7 @@ func (c processor) tmdbClientForClassify() tmdb.Client {
 	return c.tmdbClient
 }
 
-func newTorrentContent(t model.Torrent, c classify.Result) model.TorrentContent {
+func NewTorrentContent(t model.Torrent, c classify.Result) model.TorrentContent {
 	var filesCount model.NullUint
 	if t.FilesCount.Valid {
 		filesCount = t.FilesCount
@@ -211,8 +212,18 @@ func newTorrentContent(t model.Torrent, c classify.Result) model.TorrentContent 
 		filesCount = model.NewNullUint(1)
 	}
 
+	id, err := uuid.NewV7()
+	if err != nil {
+		id = uuid.New()
+	}
+
+	publishedAt := t.PublishedAt()
+	if publishedAt.IsZero() {
+		publishedAt = time.Now()
+	}
+
 	tc := model.TorrentContent{
-		ID:              uuid.NewString(),
+		ID:              id.String(),
 		Torrent:         t,
 		InfoHash:        t.InfoHash,
 		ContentType:     c.ContentType,
@@ -228,19 +239,16 @@ func newTorrentContent(t model.Torrent, c classify.Result) model.TorrentContent 
 		FilesCount:      filesCount,
 		Seeders:         t.Seeders(),
 		Leechers:        t.Leechers(),
-		PublishedAt:     t.PublishedAt(),
+		PublishedAt:     publishedAt,
 	}
 
 	if c.Content != nil {
 		content := *c.Content
-		content.UpdateTsv()
 		tc.ContentType = model.NewNullContentType(content.Type)
 		tc.ContentSource = model.NewNullString(content.Source)
 		tc.ContentID = model.NewNullString(content.ID)
 		tc.Content = content
 	}
-
-	tc.UpdateTsv()
 
 	return tc
 }

@@ -3,11 +3,11 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/archive"
 	"github.com/bitmagnet-io/bitmagnet/internal/lazy"
@@ -21,11 +21,11 @@ var defaultPragmas = []string{
 	"journal_mode(WAL)",
 	"busy_timeout(5000)",
 	"synchronous(NORMAL)",
-	"cache_size(-64000)",
-	"mmap_size(536870912)",
+	"cache_size(-393216)",
+	"mmap_size(0)",
 	"temp_store(MEMORY)",
-	"wal_autocheckpoint(25000)",
-	"journal_size_limit(134217728)",
+	"wal_autocheckpoint(0)",
+	"journal_size_limit(268435456)",
 }
 
 func pragmaName(p string) string {
@@ -56,15 +56,14 @@ func BuildDSN(dbPath string) string {
 
 type Params struct {
 	fx.In
-	Config Config
-	Logger *zap.SugaredLogger
+	Config    Config
+	Logger    *zap.SugaredLogger
+	Lifecycle fx.Lifecycle `optional:"true"`
 }
 
 type Result struct {
 	fx.Out
-	DB        lazy.Lazy[*sql.DB]
-	FlushWait *sync.WaitGroup `name:"db_flush_wait"`
-	AppHook   fx.Hook         `group:"app_hooks"`
+	DB lazy.Lazy[*sql.DB]
 }
 
 func DBPath(config Config) string {
@@ -104,18 +103,14 @@ func openLazyDB(dbPath string) lazy.Lazy[*sql.DB] {
 }
 
 func New(p Params) (Result, error) {
-	flushWait := &sync.WaitGroup{}
-
 	dbPath := DBPath(p.Config)
 
 	lazyDB := openLazyDB(dbPath)
 	archivePath := ArchiveDBPath(dbPath)
 	lazyArchiveDB := openLazyDB(archivePath)
 
-	return Result{
-		DB:        lazyDB,
-		FlushWait: flushWait,
-		AppHook: fx.Hook{
+	if p.Lifecycle != nil {
+		p.Lifecycle.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				adb, err := lazyArchiveDB.Get()
 				if err != nil {
@@ -139,19 +134,25 @@ func New(p Params) (Result, error) {
 				return ensureIncrementalAutoVacuum(db, p.Logger)
 			},
 			OnStop: func(context.Context) error {
-				// Wait for the blocking manager to flush before closing.
-				// If the blocking module is not part of the app (e.g. dev
-				// commands), nothing ever calls Add and this returns at once.
-				flushWait.Wait()
-				if adb, err := lazyArchiveDB.Get(); err == nil {
-					_ = adb.Close()
-				}
-				if db, err := lazyDB.Get(); err == nil {
-					_ = db.Close()
-				}
-				return nil
+				archiveErr := lazyArchiveDB.IfInitialized(func(adb *sql.DB) error {
+					if archivePath != ":memory:" {
+						_, _ = adb.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+					}
+					return adb.Close()
+				})
+				dbErr := lazyDB.IfInitialized(func(db *sql.DB) error {
+					if dbPath != ":memory:" {
+						_, _ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+					}
+					return db.Close()
+				})
+				return errors.Join(archiveErr, dbErr)
 			},
-		},
+		})
+	}
+
+	return Result{
+		DB: lazyDB,
 	}, nil
 }
 

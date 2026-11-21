@@ -3,7 +3,7 @@ package blocking
 import (
 	"context"
 	"database/sql"
-	"sync"
+	"time"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/database/sqlite"
 	"github.com/bitmagnet-io/bitmagnet/internal/lazy"
@@ -15,20 +15,17 @@ type Params struct {
 	fx.In
 	DB           lazy.Lazy[*sql.DB]
 	SqliteConfig sqlite.Config
-	FlushWait    *sync.WaitGroup `name:"db_flush_wait"`
+	Lifecycle    fx.Lifecycle `optional:"true"`
 }
 
 type Result struct {
 	fx.Out
 	Manager      lazy.Lazy[Manager]
-	AppHook      fx.Hook              `group:"app_hooks"`
 	BlockedTotal prometheus.Collector `group:"prometheus_collectors"`
 	SkippedTotal prometheus.Collector `group:"prometheus_collectors"`
 }
 
 func New(params Params) Result {
-	params.FlushWait.Add(1)
-
 	blockedTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "bitmagnet",
 		Subsystem: "blocking",
@@ -61,16 +58,24 @@ func New(params Params) Result {
 		), nil
 	})
 
-	return Result{
-		Manager: lazyManager,
-		AppHook: fx.Hook{
+	if params.Lifecycle != nil {
+		params.Lifecycle.Append(fx.Hook{
 			OnStop: func(ctx context.Context) error {
-				defer params.FlushWait.Done()
 				return lazyManager.IfInitialized(func(m Manager) error {
-					return m.Flush(ctx)
+					flushCtx := ctx
+					if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+						var cancel context.CancelFunc
+						flushCtx, cancel = context.WithTimeout(ctx, 30*time.Second)
+						defer cancel()
+					}
+					return m.Compact(flushCtx)
 				})
 			},
-		},
+		})
+	}
+
+	return Result{
+		Manager:      lazyManager,
 		BlockedTotal: blockedTotal,
 		SkippedTotal: skippedTotal,
 	}

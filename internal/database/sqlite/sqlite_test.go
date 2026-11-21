@@ -17,7 +17,7 @@ func TestPragmas(t *testing.T) {
 	var cacheSize int
 	err = db.QueryRow("PRAGMA cache_size").Scan(&cacheSize)
 	require.NoError(t, err)
-	require.Equal(t, -64000, cacheSize)
+	require.Equal(t, -393216, cacheSize)
 
 	var tempStore int
 	err = db.QueryRow("PRAGMA temp_store").Scan(&tempStore)
@@ -27,13 +27,13 @@ func TestPragmas(t *testing.T) {
 	var walAutocheckpoint int
 	err = db.QueryRow("PRAGMA wal_autocheckpoint").Scan(&walAutocheckpoint)
 	require.NoError(t, err)
-	require.Equal(t, 25000, walAutocheckpoint)
+	require.Equal(t, 0, walAutocheckpoint)
 
 	var mmapSize int64
 	err = db.QueryRow("PRAGMA mmap_size").Scan(&mmapSize)
 	require.NoError(t, err)
 	t.Logf("mmap_size: %d", mmapSize)
-	require.Equal(t, int64(536870912), mmapSize)
+	require.Equal(t, int64(0), mmapSize)
 }
 
 func TestPragmas_UserOverride(t *testing.T) {
@@ -56,5 +56,5 @@ func TestPragmas_UserOverride(t *testing.T) {
 	var cacheSize int
 	err = db.QueryRow("PRAGMA cache_size").Scan(&cacheSize)
 	require.NoError(t, err)
-	require.Equal(t, -64000, cacheSize)
+	require.Equal(t, -393216, cacheSize)
 }

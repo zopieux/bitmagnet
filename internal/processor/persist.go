@@ -57,13 +57,7 @@ func (c processor) persist(ctx context.Context, payload persistPayload) error {
 		}
 	}
 
-	if len(payload.deleteInfoHashes) > 0 {
-		if blockErr := c.blockingManager.Block(ctx, payload.deleteInfoHashes, false); blockErr != nil {
-			return blockErr
-		}
-	}
-
-	return c.dao.Transaction(func(tx *dao.Query) error {
+	if err := c.dao.Transaction(func(tx *dao.Query) error {
 		if len(contentsPtr) > 0 {
 			if createContentErr := tx.Content.WithContext(ctx).Clauses(
 				clause.OnConflict{
@@ -114,5 +108,13 @@ func (c processor) persist(ctx context.Context, payload persistPayload) error {
 		}
 
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	if len(payload.deleteInfoHashes) > 0 {
+		c.blockingManager.BlockUnpersisted(payload.deleteInfoHashes)
+	}
+
+	return nil
 }

@@ -52,6 +52,7 @@
               [
                 curl
                 go
+                inotify-tools
                 mprocs
                 nodejs_24
                 prettier

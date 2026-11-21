@@ -2,9 +2,11 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 
+	"github.com/bitmagnet-io/bitmagnet/internal/app/cli/hooks"
 	"github.com/bitmagnet-io/bitmagnet/internal/version"
 	"github.com/urfave/cli/v2"
 	"go.uber.org/fx"
@@ -13,11 +15,12 @@ import (
 
 type Params struct {
 	fx.In
-	Args       []string `name:"cli_args"`
-	Lifecycle  fx.Lifecycle
-	Shutdowner fx.Shutdowner
-	Commands   []*cli.Command `group:"commands"`
-	Logger     *zap.SugaredLogger
+	Args          []string `name:"cli_args"`
+	Lifecycle     fx.Lifecycle
+	Shutdowner    fx.Shutdowner
+	Commands      []*cli.Command      `group:"commands"`
+	AttachedHooks hooks.AttachedHooks `optional:"true"`
+	Logger        *zap.SugaredLogger
 }
 
 type Result struct {
@@ -37,6 +40,9 @@ func New(p Params) (Result, error) {
 		name += " " + version.GitTag
 	}
 
+	runCtx, runCancel := context.WithCancel(context.Background())
+	var runDone chan struct{}
+
 	app := &cli.App{
 		Name:     name,
 		Commands: commands,
@@ -44,6 +50,10 @@ func New(p Params) (Result, error) {
 			p.Logger.Errorw("command not found", "command", command)
 		},
 		After: func(*cli.Context) error {
+			// Skip Shutdown if fx already initiated OnStop to avoid an already-closed broadcast error.
+			if runCtx.Err() != nil {
+				return nil
+			}
 			return p.Shutdowner.Shutdown()
 		},
 		Version: version.GitTag,
@@ -55,20 +65,37 @@ func New(p Params) (Result, error) {
 
 	p.Lifecycle.Append(fx.Hook{
 		OnStart: func(context.Context) error {
+			runDone = make(chan struct{})
 			// todo: Fix!
 			//nolint:contextcheck
 			go (func() {
+				defer close(runDone)
 				// the following hack fixes a weird bug where the CLI does not terminate when calling
 				// with just --help
 				args := p.Args
 				if len(args) == 2 && (args[1] == "-h" || args[1] == "--help") {
 					args = []string{args[0]}
 				}
-				if err := app.RunContext(context.Background(), args); err != nil {
+				if err := app.RunContext(runCtx, args); err != nil {
+					if errors.Is(err, context.Canceled) && runCtx.Err() != nil {
+						return
+					}
 					panic(err)
 				}
 			})()
 			return nil
+		},
+		OnStop: func(stopCtx context.Context) error {
+			runCancel()
+			if runDone == nil {
+				return nil
+			}
+			select {
+			case <-runDone:
+				return nil
+			case <-stopCtx.Done():
+				return stopCtx.Err()
+			}
 		},
 	})
 

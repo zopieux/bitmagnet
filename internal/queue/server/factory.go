@@ -31,6 +31,7 @@ type Result struct {
 
 func New(p Params) Result {
 	stopped := make(chan struct{})
+	var srv *server
 
 	return Result{
 		Worker: worker.NewWorker(
@@ -53,14 +54,17 @@ func New(p Params) Result {
 						}
 						handlers = append(handlers, h)
 					}
-					srv := server{
+					checkInterval := p.SqliteConfig.WriteInterval
+					if checkInterval < 5*time.Minute {
+						checkInterval = 5 * time.Minute
+					}
+					srv = &server{
 						stopped: stopped,
 						query:   query,
 						// pool:       pool,
-						handlers:   handlers,
-						gcInterval: time.Hour,
-						// Poll at half the DB write interval to avoid frequent small disk I/O.
-						checkInterval: p.SqliteConfig.WriteInterval / 2,
+						handlers:      handlers,
+						gcInterval:    6 * time.Hour,
+						checkInterval: checkInterval,
 						logger:        p.Logger.Named("queue"),
 						metrics:       p.Metrics,
 					}
@@ -68,8 +72,11 @@ func New(p Params) Result {
 					//nolint:contextcheck
 					return srv.Start(context.Background())
 				},
-				OnStop: func(context.Context) error {
+				OnStop: func(ctx context.Context) error {
 					close(stopped)
+					if srv != nil {
+						return srv.Wait(ctx)
+					}
 					return nil
 				},
 			},

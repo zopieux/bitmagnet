@@ -3,6 +3,7 @@ package configresolver
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/go-viper/mapstructure/v2"
@@ -51,6 +52,13 @@ func (r mapResolver) Resolve(path []string, valueType reflect.Type) (any, bool, 
 			} else if sliceV, sliceOk := rawV.([]interface{}); sliceOk {
 				resolvedSlice, err := r.resolveSlice(currentPath, sliceV, valueType)
 				return resolvedSlice, true, err
+			}
+
+			if valueType == durationType {
+				return nil, true, fmt.Errorf(
+					"config path '%s' is a duration and must be a string with units (e.g. \"60s\", \"5m\"), got %T (%v)",
+					strings.Join(currentPath, "."), rawV, rawV,
+				)
 			}
 
 			return rawV, true, nil

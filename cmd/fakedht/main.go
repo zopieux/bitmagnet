@@ -1,13 +1,13 @@
 // fakedht is a test-only fake DHT node + BitTorrent peer for exercising
-// bitmagnette's DHT crawler without touching the real internet DHT.
+// bitmagnet's DHT crawler without touching the real internet DHT.
 //
 // It generates N deterministic fake torrents (seeded by FAKEDHT_SEED),
 // serves their infohashes via BEP 51 sample_infohashes, answers get_peers
 // with its own peer address, and serves the torrent metadata over
 // ut_metadata (BEP 9).
 //
-// Point bitmagnette at it with:
-//   DHT_CRAWLER_BOOTSTRAP_NODES='["127.0.0.1:<dht-port>"]' bitmagnet worker run --all
+// Point bitmagnet at it with:
+//   DHT_CRAWLER_BOOTSTRAP_NODES=127.0.0.1:<dht-port> bitmagnet worker run --all
 //
 // Env vars:
 //   FAKEDHT_SEED       string seed for deterministic torrent generation (default "test")
@@ -68,7 +68,7 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("fakedht: dht listening on %s\n", dht.addr())
-	fmt.Printf("fakedht: point bitmagnette at it with DHT_CRAWLER_BOOTSTRAP_NODES='[\"127.0.0.1:%d\"]'\n", dhtPort)
+	fmt.Printf("fakedht: point bitmagnet at it with DHT_CRAWLER_BOOTSTRAP_NODES=127.0.0.1:%d\n", dhtPort)
 
 	go peer.serve()
 	dht.serve() // blocks

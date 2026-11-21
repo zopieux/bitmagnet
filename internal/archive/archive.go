@@ -210,6 +210,14 @@ func CopyToArchive(ctx context.Context, mainDB *sql.DB, archivePath string, hash
 		return err
 	}
 
+	tx, err := mainDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin archive transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
 	for batch := range slices.Chunk(hashes, batchSize) {
 		placeholders := strings.Repeat("?,", len(batch))
 		placeholders = strings.TrimSuffix(placeholders, ",")
@@ -221,15 +229,19 @@ func CopyToArchive(ctx context.Context, mainDB *sql.DB, archivePath string, hash
 
 		for _, tbl := range archiveTables {
 			query := fmt.Sprintf("INSERT OR REPLACE INTO archive.%s SELECT * FROM main.%s WHERE info_hash IN (%s)", tbl, tbl, placeholders)
-			if _, err := mainDB.ExecContext(ctx, query, args...); err != nil {
+			if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 				return fmt.Errorf("failed to copy %s to archive: %w", tbl, err)
 			}
 		}
 
 		sourcesQuery := fmt.Sprintf("INSERT OR IGNORE INTO archive.torrent_sources SELECT * FROM main.torrent_sources WHERE key IN (SELECT source FROM main.torrents_torrent_sources WHERE info_hash IN (%s))", placeholders)
-		if _, err := mainDB.ExecContext(ctx, sourcesQuery, args...); err != nil {
+		if _, err := tx.ExecContext(ctx, sourcesQuery, args...); err != nil {
 			return fmt.Errorf("failed to copy torrent_sources to archive: %w", err)
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit archive transaction: %w", err)
 	}
 
 	return nil

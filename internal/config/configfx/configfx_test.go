@@ -102,3 +102,33 @@ func TestConfig(t *testing.T) {
 		}),
 	).Run()
 }
+
+func TestConfigRejectsIntegerDuration(t *testing.T) {
+	t.Parallel()
+
+	type DurationConfig struct {
+		Interval time.Duration
+	}
+
+	app := fx.New(
+		fx.NopLogger,
+		NewConfigModule[DurationConfig]("test", DurationConfig{Interval: time.Minute}),
+		fx.Provide(
+			fx.Annotated{
+				Group: "config_resolvers",
+				Target: func(val *validator.Validate) (configresolver.Resolver, error) {
+					return configresolver.NewMap(map[string]any{
+						"test": map[string]any{
+							"interval": 60,
+						},
+					}, val), nil
+				},
+			},
+		),
+		fx.Provide(validator.New),
+		fx.Provide(config.New),
+		fx.Invoke(func(DurationConfig) {}),
+	)
+	assert.Error(t, app.Err())
+	assert.Contains(t, app.Err().Error(), "must be a string with units")
+}

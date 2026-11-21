@@ -402,6 +402,9 @@ func main() {
 
 	flushArchives()
 	flushDeletes()
+	if err := manager.Compact(ctx); err != nil {
+		fatal(fmt.Errorf("failed to compact bloom filter: %w", err))
+	}
 
 	fmt.Printf(
 		"Done: %d torrents processed in %s (deleted %d, archived %d, kept %d)\n",

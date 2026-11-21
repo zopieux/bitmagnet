@@ -2,12 +2,14 @@ package dhtcrawler
 
 import (
 	"context"
+	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/blocking"
+	"github.com/bitmagnet-io/bitmagnet/internal/classify"
 	"github.com/bitmagnet-io/bitmagnet/internal/concurrency"
 	"github.com/bitmagnet-io/bitmagnet/internal/database/dao"
-	"github.com/bitmagnet-io/bitmagnet/internal/database/search"
 	"github.com/bitmagnet-io/bitmagnet/internal/database/sqlite"
 	"github.com/bitmagnet-io/bitmagnet/internal/lazy"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol"
@@ -15,7 +17,6 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht/ktable"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo/banning"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo/metainforequester"
-	queueprometheus "github.com/bitmagnet-io/bitmagnet/internal/queue/prometheus"
 	"github.com/bitmagnet-io/bitmagnet/internal/worker"
 	"github.com/prometheus/client_golang/prometheus"
 	boom "github.com/tylertreat/BoomFilters"
@@ -26,17 +27,17 @@ import (
 type Params struct {
 	fx.In
 	Config            Config
+	ClassifyConfig    classify.Config
 	SqliteConfig      sqlite.Config
+	DB                lazy.Lazy[*sql.DB]
 	KTable            ktable.Table
 	Client            lazy.Lazy[client.Client]
 	MetainfoRequester metainforequester.Requester
 	BanningChecker    banning.Checker `name:"metainfo_banning_checker"`
-	Search            lazy.Lazy[search.Search]
 	Dao               lazy.Lazy[*dao.Query]
 	BlockingManager   lazy.Lazy[blocking.Manager]
-	DiscoveredNodes concurrency.BatchingChannel[ktable.Node] `name:"dht_discovered_nodes"`
-	Logger          *zap.SugaredLogger
-	QueueMetrics    queueprometheus.QueueMetrics `optional:"true"`
+	DiscoveredNodes   concurrency.BatchingChannel[ktable.Node] `name:"dht_discovered_nodes"`
+	Logger            *zap.SugaredLogger
 }
 
 type Result struct {
@@ -75,6 +76,10 @@ func New(params Params) Result {
 					if err != nil {
 						return err
 					}
+					sqlDB, err := params.DB.Get()
+					if err != nil {
+						return err
+					}
 					query, err := params.Dao.Get()
 					if err != nil {
 						return err
@@ -83,11 +88,28 @@ func New(params Params) Result {
 					if err != nil {
 						return err
 					}
+
+					triageInterval := params.Config.InfoHashTriageInterval
+					if triageInterval <= 0 || triageInterval > time.Second {
+						triageInterval = time.Second
+					}
+
+					dbPath := sqlite.DBPath(params.SqliteConfig)
+					basePath, _, _ := strings.Cut(dbPath, "?")
+					walPath := ""
+					if basePath != "" && basePath != ":memory:" {
+						walPath = basePath + "-wal"
+					}
+
+					logger := params.Logger.Named("dht_crawler")
+
 					c = crawler{
 						kTable:                       params.KTable,
 						client:                       cl,
 						metainfoRequester:            params.MetainfoRequester,
 						banningChecker:               params.BanningChecker,
+						classifyConfig:               params.ClassifyConfig,
+						sqlDB:                        sqlDB,
 						bootstrapNodes:               params.Config.BootstrapNodes,
 						reseedBootstrapNodesInterval: params.Config.ReseedBootstrapNodesInterval,
 						getOldestNodesInterval:       time.Second * 10,
@@ -102,25 +124,17 @@ func New(params Params) Result {
 							10*scalingFactor,
 						),
 						infoHashTriage: concurrency.NewBatchingChannel[nodeHasPeersForHash](
-							10*scalingFactor, 1000, params.Config.InfoHashTriageInterval),
+							10*scalingFactor, 1000, triageInterval),
 						getPeers: concurrency.NewBufferedConcurrentChannel[nodeHasPeersForHash](
-							10*scalingFactor, 20*scalingFactor),
-						scrape: concurrency.NewBufferedConcurrentChannel[nodeHasPeersForHash](
 							10*scalingFactor, 20*scalingFactor),
 						requestMetaInfo: concurrency.NewBufferedConcurrentChannel[infoHashWithPeers](
 							10*scalingFactor,
 							40*scalingFactor,
 						),
-						persistTorrents: concurrency.NewBatchingChannel[infoHashWithMetaInfo](
-							1000,
-							1000,
-							params.SqliteConfig.WriteInterval,
-						),
-						persistSources: concurrency.NewBatchingChannel[infoHashWithScrape](
-							1000,
-							1000,
-							params.SqliteConfig.WriteInterval,
-						),
+						scrapeNew: concurrency.NewBufferedConcurrentChannel[pendingTorrent](
+							10*scalingFactor, 20*scalingFactor),
+						rescrape: concurrency.NewBufferedConcurrentChannel[nodeHasPeersForHash](
+							10*scalingFactor, 20*scalingFactor),
 						saveFilesThreshold: params.Config.SaveFilesThreshold,
 						savePieces:         params.Config.SavePieces,
 						rescrapeThreshold:  params.Config.RescrapeThreshold,
@@ -128,13 +142,26 @@ func New(params Params) Result {
 						ignoreHashes: &ignoreHashes{
 							bloom: boom.NewStableBloomFilter(10_000_000, 2, 0.001),
 						},
+						knownHashes:     newKnownHashes(),
 						blockingManager: blockingManager,
 						soughtNodeID:    &concurrency.AtomicValue[protocol.ID]{},
 						stopped:         make(chan struct{}),
+						done:            make(chan struct{}),
 						persistedTotal:  persistedTotal,
-						queueMetrics:    params.QueueMetrics,
-						logger:          params.Logger.Named("dht_crawler"),
+						logger:          logger,
 					}
+					c.storageFlusher = newStorageFlusher(storageFlusherConfig{
+						dao:                query,
+						sqlDB:              sqlDB,
+						walPath:            walPath,
+						blockingManager:    blockingManager,
+						savePieces:         params.Config.SavePieces,
+						writeInterval:      params.SqliteConfig.WriteInterval,
+						checkpointInterval: params.SqliteConfig.CheckpointInterval,
+						persistedTotal:     persistedTotal,
+						statsPersisted:     &c.statsPersisted,
+						logger:             logger,
+					})
 					c.soughtNodeID.Set(protocol.RandomNodeID())
 
 					stageDepth.setProbes(map[string]func() int{
@@ -144,10 +171,17 @@ func New(params Params) Result {
 						"sample_infohashes": func() int { return len(c.nodesForSampleInfoHashes.In()) },
 						"triage":            func() int { return len(c.infoHashTriage.In()) },
 						"get_peers":         func() int { return len(c.getPeers.In()) },
-						"scrape":            func() int { return len(c.scrape.In()) },
+						"scrape_new":        func() int { return len(c.scrapeNew.In()) },
+						"rescrape":          func() int { return len(c.rescrape.In()) },
 						"request_meta_info": func() int { return len(c.requestMetaInfo.In()) },
-						"persist_torrents":  func() int { return len(c.persistTorrents.In()) },
-						"persist_sources":   func() int { return len(c.persistSources.In()) },
+						"flush_torrents": func() int {
+							n, _ := c.storageFlusher.PendingCounts()
+							return n
+						},
+						"flush_rescrapes": func() int {
+							_, n := c.storageFlusher.PendingCounts()
+							return n
+						},
 					})
 
 					// todo: Fix!
@@ -155,10 +189,23 @@ func New(params Params) Result {
 					go c.start()
 					return nil
 				},
-				OnStop: func(context.Context) error {
+				OnStop: func(ctx context.Context) error {
 					active.Set(false)
 					if c.stopped != nil {
 						close(c.stopped)
+					}
+					if c.done != nil {
+						waitCtx := ctx
+						if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+							var cancel context.CancelFunc
+							waitCtx, cancel = context.WithTimeout(ctx, 35*time.Second)
+							defer cancel()
+						}
+						select {
+						case <-c.done:
+						case <-waitCtx.Done():
+							return waitCtx.Err()
+						}
 					}
 					return nil
 				},

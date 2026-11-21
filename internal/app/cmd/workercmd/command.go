@@ -1,7 +1,9 @@
 package workercmd
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/worker"
 	"github.com/urfave/cli/v2"
@@ -47,8 +49,10 @@ func New(p Params) (Result, error) {
 					<-ctx.Done()
 					return nil
 				},
-				After: func(ctx *cli.Context) error {
-					return p.Workers.Stop(ctx.Context)
+				After: func(*cli.Context) error {
+					stopCtx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+					defer cancel()
+					return p.Workers.Stop(stopCtx)
 				},
 			},
 			{

@@ -192,5 +192,9 @@ func main() {
 		return
 	}
 
+	if err := mgr.Compact(ctx); err != nil {
+		fatal(fmt.Errorf("failed to compact bloom filter: %w", err))
+	}
+
 	fmt.Printf("%s: done, %d torrents in %s\n", action, processed, time.Since(start).Round(time.Millisecond))
 }

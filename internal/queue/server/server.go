@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/database/dao"
@@ -26,6 +27,7 @@ type server struct {
 	checkInterval time.Duration
 	logger        *zap.SugaredLogger
 	metrics       prometheus.QueueMetrics
+	wg            sync.WaitGroup
 }
 
 func (s *server) Start(ctx context.Context) (err error) {
@@ -45,12 +47,19 @@ func (s *server) Start(ctx context.Context) (err error) {
 			checkInterval: s.checkInterval,
 			logger:        s.logger.With("queue", h.Queue),
 			metrics:       s.metrics,
+			wg:            &s.wg,
 		}
 
-		go sh.start(ctx)
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			sh.start(ctx)
+		}()
 	}
 
+	s.wg.Add(1)
 	go func() {
+		defer s.wg.Done()
 		select {
 		case <-s.stopped:
 			cancel()
@@ -59,9 +68,28 @@ func (s *server) Start(ctx context.Context) (err error) {
 		}
 	}()
 
-	go s.runMaintenance(ctx)
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.runMaintenance(ctx)
+	}()
 
 	return
+}
+
+// Wait blocks until all server goroutines exit or ctx is canceled.
+func (s *server) Wait(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // vacuumPagesPerRun bounds the incremental vacuum in the maintenance tick:
@@ -72,11 +100,19 @@ const vacuumPagesPerRun = 1024
 
 // runMaintenance is the single periodic housekeeping tick. All database
 // maintenance runs here, batched into one short window: expired queue jobs
-// are deleted first (freeing pages), then the FTS index is optimized
-// (contents rows are deleted and re-inserted on every reprocess, which
-// fragments it), then an incremental vacuum releases the freed pages.
+// are deleted first (freeing pages), then the FTS index runs a bounded
+// incremental merge, then an incremental vacuum releases freed pages if any.
 func (s *server) runMaintenance(ctx context.Context) {
+	ticker := time.NewTicker(s.gcInterval)
+	defer ticker.Stop()
+
 	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
 		tx := s.query.QueueJob.WithContext(ctx).
 			Where(
 				s.query.QueueJob.Status.In(string(model.QueueJobStatusProcessed), string(model.QueueJobStatusFailed)),
@@ -92,17 +128,14 @@ func (s *server) runMaintenance(ctx context.Context) {
 			s.logger.Debugw("deleted old queue jobs", "count", tx.RowsAffected)
 		}
 		db := s.query.QueueJob.WithContext(ctx).UnderlyingDB()
-		if err := db.Exec("INSERT INTO torrent_contents_fts(torrent_contents_fts) VALUES('optimize')").Error; err != nil {
-			s.logger.Debugw("fts optimize skipped", "error", err)
+		if err := db.Exec("INSERT INTO torrent_contents_fts(torrent_contents_fts, rank) VALUES('merge', 200)").Error; err != nil {
+			s.logger.Debugw("fts merge skipped", "error", err)
 		}
-		if err := db.Exec("PRAGMA incremental_vacuum(" + strconv.Itoa(vacuumPagesPerRun) + ")").Error; err != nil {
-			s.logger.Warnw("incremental vacuum failed", "error", err)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(s.gcInterval):
-			continue
+		var freelistCount int
+		if scanErr := db.Raw("PRAGMA freelist_count").Scan(&freelistCount).Error; scanErr == nil && freelistCount > 0 {
+			if err := db.Exec("PRAGMA incremental_vacuum(" + strconv.Itoa(vacuumPagesPerRun) + ")").Error; err != nil {
+				s.logger.Warnw("incremental vacuum failed", "error", err)
+			}
 		}
 	}
 }
@@ -114,17 +147,18 @@ type serverHandler struct {
 	checkInterval time.Duration
 	logger        *zap.SugaredLogger
 	metrics       prometheus.QueueMetrics
+	wg            *sync.WaitGroup
 }
 
 func (h *serverHandler) start(ctx context.Context) {
 	baseInterval := h.checkInterval
-	if baseInterval <= 0 {
+	if baseInterval < 10*time.Second {
 		baseInterval = 10 * time.Second
 	}
 	currentInterval := baseInterval
 	maxInterval := baseInterval * 4
-	if maxInterval < time.Minute {
-		maxInterval = time.Minute
+	if maxInterval < 15*time.Minute {
+		maxInterval = 15 * time.Minute
 	}
 
 	timer := time.NewTimer(currentInterval)
@@ -152,7 +186,9 @@ func (h *serverHandler) start(ctx context.Context) {
 			return
 		}
 
+		h.wg.Add(1)
 		go func() {
+			defer h.wg.Done()
 			defer h.sem.Release(1)
 			jobID, _, err := h.handleJob(ctx)
 			if err == nil && jobID != "" {

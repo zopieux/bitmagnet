@@ -239,7 +239,14 @@ func (r *registry) Stop(ctx context.Context) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	for _, w := range r.workers {
+	keys := make([]string, 0, len(r.workers))
+	for k := range r.workers {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for i := len(keys) - 1; i >= 0; i-- {
+		w := r.workers[keys[i]]
 		if w.Started() {
 			stopHook := w._hook().OnStop
 			if stopHook != nil {

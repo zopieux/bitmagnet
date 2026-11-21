@@ -8,20 +8,28 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht/ktable"
 )
 
-func (c *crawler) runScrape(ctx context.Context) {
-	_ = c.scrape.Run(ctx, func(req nodeHasPeersForHash) {
-		pfh, pfhErr := c.requestScrape(ctx, req)
-		if pfhErr != nil {
+func (c *crawler) runScrapeNew(ctx context.Context) {
+	_ = c.scrapeNew.Run(ctx, func(item pendingTorrent) {
+		if res, err := c.requestScrape(ctx, item.nodeHasPeersForHash); err == nil && len(item.torrent.Sources) > 0 {
+			item.torrent.Sources[0].Seeders, item.torrent.Sources[0].Leechers = res.seedersLeechers()
+		}
+		c.storageFlusher.EnqueueTorrent(item)
+	})
+}
+
+func (c *crawler) runRescrape(ctx context.Context) {
+	_ = c.rescrape.Run(ctx, func(req nodeHasPeersForHash) {
+		res, err := c.requestScrape(ctx, req)
+		if err != nil {
 			return
 		}
-		select {
-		case <-ctx.Done():
-		case c.persistSources.In() <- infoHashWithScrape{
-			nodeHasPeersForHash: req,
-			bfsd:                pfh.bfsd,
-			bfpe:                pfh.bfpe,
-		}:
-		}
+		seeders, leechers := res.seedersLeechers()
+		c.storageFlusher.EnqueueRescrape(rescrapeUpdate{
+			infoHash: req.infoHash,
+			seeders:  seeders,
+			leechers: leechers,
+			at:       time.Now(),
+		})
 	})
 }
 

@@ -2,6 +2,7 @@ package dhtcrawler
 
 import (
 	"context"
+	"net/netip"
 	"time"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol"
@@ -9,7 +10,7 @@ import (
 
 // runInfoHashTriage receives discovered hashes on the infoHashTriage channel,
 // filters blocked hashes and already-known hashes purely in memory, and forwards
-// unknown hashes to getPeers or stale-scrape hashes to rescrape.
+// unknown hashes to requestMetaInfo/getPeers or stale-scrape hashes to rescrape.
 func (c *crawler) runInfoHashTriage(ctx context.Context) {
 	for {
 		select {
@@ -20,7 +21,11 @@ func (c *crawler) runInfoHashTriage(ctx context.Context) {
 
 			reqMap := make(map[protocol.ID]nodeHasPeersForHash, len(reqs))
 			for _, r := range reqs {
-				if _, ok := reqMap[r.infoHash]; ok {
+				if existing, ok := reqMap[r.infoHash]; ok {
+					// Prefer an entry with a direct peer endpoint (from announce_peer) over sample_infohashes.
+					if !existing.peer.IsValid() && r.peer.IsValid() {
+						reqMap[r.infoHash] = r
+					}
 					continue
 				}
 
@@ -53,13 +58,25 @@ func (c *crawler) runInfoHashTriage(ctx context.Context) {
 				r := reqMap[h]
 				known, lastDay := c.knownHashes.Lookup(h)
 				if !known {
-					select {
-					case <-ctx.Done():
-						return
-					case c.getPeers.In() <- r:
-						c.statsNew.Add(1)
+					if r.peer.IsValid() {
+						select {
+						case <-ctx.Done():
+							return
+						case c.requestMetaInfo.In() <- infoHashWithPeers{
+							nodeHasPeersForHash: r,
+							peers:               []netip.AddrPort{r.peer},
+						}:
+							c.statsNew.Add(1)
+						}
+					} else if r.node.IsValid() {
+						select {
+						case <-ctx.Done():
+							return
+						case c.getPeers.In() <- r:
+							c.statsNew.Add(1)
+						}
 					}
-				} else if c.rescrapeThreshold > 0 && (lastDay == 0 || lastDay < cutoffDay) {
+				} else if r.node.IsValid() && c.rescrapeThreshold > 0 && (lastDay == 0 || lastDay < cutoffDay) {
 					c.knownHashes.UpdateScrapeDay(h, today)
 					select {
 					case <-ctx.Done():

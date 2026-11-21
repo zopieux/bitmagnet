@@ -10,8 +10,10 @@ import (
 
 func (c *crawler) runScrapeNew(ctx context.Context) {
 	_ = c.scrapeNew.Run(ctx, func(item pendingTorrent) {
-		if res, err := c.requestScrape(ctx, item.nodeHasPeersForHash); err == nil && len(item.torrent.Sources) > 0 {
-			item.torrent.Sources[0].Seeders, item.torrent.Sources[0].Leechers = res.seedersLeechers()
+		if item.node.IsValid() && len(item.torrent.Sources) > 0 {
+			if res, err := c.requestScrape(ctx, item.nodeHasPeersForHash); err == nil {
+				item.torrent.Sources[0].Seeders, item.torrent.Sources[0].Leechers = res.seedersLeechers()
+			}
 		}
 		c.storageFlusher.EnqueueTorrent(item)
 	})

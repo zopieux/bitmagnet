@@ -21,6 +21,12 @@ type RecvMsg struct {
 	From netip.AddrPort
 }
 
+type AnnouncedPeer struct {
+	InfoHash protocol.ID
+	Node     netip.AddrPort
+	Peer     netip.AddrPort
+}
+
 // AnnouncePort returns the torrent port for the message.
 // There is an optional argument called implied_port which value is either 0 or 1.
 // If it is present and non-zero, the port argument should be ignored and the source port of the UDP packet

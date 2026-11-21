@@ -15,6 +15,7 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/database/dao"
 	"github.com/bitmagnet-io/bitmagnet/internal/model"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol"
+	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht/client"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht/ktable"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo/banning"
@@ -36,6 +37,7 @@ type crawler struct {
 	getOldestNodesInterval       time.Duration
 	oldPeerThreshold             time.Duration
 	discoveredNodes              concurrency.BatchingChannel[ktable.Node]
+	announcedPeers               <-chan dht.AnnouncedPeer
 	nodesForPing                 concurrency.BufferedConcurrentChannel[ktable.Node]
 	nodesForFindNode             concurrency.BufferedConcurrentChannel[ktable.Node]
 	nodesForSampleInfoHashes     concurrency.BufferedConcurrentChannel[ktable.Node]
@@ -64,6 +66,7 @@ type crawler struct {
 	logger         *zap.SugaredLogger
 	// stats counters for the periodic crawler stats log line
 	statsSampled   atomic.Int64
+	statsAnnounced atomic.Int64
 	statsNew       atomic.Int64
 	statsPersisted atomic.Int64
 	statsBlocked   atomic.Int64
@@ -109,6 +112,7 @@ func (c *crawler) start() {
 	// start the various pipeline workers
 	go c.rotateSoughtNodeID(ctx)
 	go c.runDiscoveredNodes(ctx)
+	go c.runAnnouncedPeers(ctx)
 	go c.runPing(ctx)
 	go c.runFindNode(ctx)
 	go c.getNodesForFindNode(ctx)
@@ -140,7 +144,7 @@ func (c *crawler) runStatsLogger(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	var prevSampled, prevNew, prevPersisted, prevBlocked, prevMetaOk, prevMetaErr int64
+	var prevSampled, prevAnnounced, prevNew, prevPersisted, prevBlocked, prevMetaOk, prevMetaErr int64
 
 	for {
 		select {
@@ -148,17 +152,18 @@ func (c *crawler) runStatsLogger(ctx context.Context) {
 			return
 		case <-ticker.C:
 			sampled := c.statsSampled.Load()
+			announced := c.statsAnnounced.Load()
 			newHashes := c.statsNew.Load()
 			persisted := c.statsPersisted.Load()
 			blocked := c.statsBlocked.Load()
 			metaOk := c.statsMetaOk.Load()
 			metaErr := c.statsMetaErr.Load()
 			c.logger.Infof(
-				"crawler stats (last 30s): sampled=%d new=%d persisted=%d blocked=%d metadata_ok=%d metadata_err=%d",
-				sampled-prevSampled, newHashes-prevNew, persisted-prevPersisted, blocked-prevBlocked,
+				"crawler stats (last 30s): sampled=%d announced=%d new=%d persisted=%d blocked=%d metadata_ok=%d metadata_err=%d",
+				sampled-prevSampled, announced-prevAnnounced, newHashes-prevNew, persisted-prevPersisted, blocked-prevBlocked,
 				metaOk-prevMetaOk, metaErr-prevMetaErr,
 			)
-			prevSampled, prevNew, prevPersisted, prevBlocked, prevMetaOk, prevMetaErr = sampled, newHashes, persisted, blocked, metaOk, metaErr
+			prevSampled, prevAnnounced, prevNew, prevPersisted, prevBlocked, prevMetaOk, prevMetaErr = sampled, announced, newHashes, persisted, blocked, metaOk, metaErr
 		}
 	}
 }
@@ -166,6 +171,7 @@ func (c *crawler) runStatsLogger(ctx context.Context) {
 type nodeHasPeersForHash struct {
 	infoHash  protocol.ID
 	node      netip.AddrPort
+	peer      netip.AddrPort
 	fromProbe bool
 }
 

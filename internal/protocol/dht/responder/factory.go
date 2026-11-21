@@ -5,6 +5,7 @@ import (
 
 	"github.com/bitmagnet-io/bitmagnet/internal/concurrency"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol"
+	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht/ktable"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/fx"
@@ -17,6 +18,7 @@ type Params struct {
 	fx.In
 	KTable          ktable.Table
 	DiscoveredNodes concurrency.BatchingChannel[ktable.Node] `name:"dht_discovered_nodes"`
+	AnnouncedPeers  chan dht.AnnouncedPeer                 `name:"dht_announced_peers" optional:"true"`
 	Logger          *zap.SugaredLogger
 }
 
@@ -54,6 +56,7 @@ func New(p Params) Result {
 				})).Named(subsystem),
 			},
 			discoveredNodes: p.DiscoveredNodes.In(),
+			announcedPeers:  p.AnnouncedPeers,
 		},
 		QueryDuration:     collector.queryDuration,
 		QuerySuccessTotal: collector.querySuccessTotal,

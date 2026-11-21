@@ -13,6 +13,7 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/database/sqlite"
 	"github.com/bitmagnet-io/bitmagnet/internal/lazy"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol"
+	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht/client"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht/ktable"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo/banning"
@@ -37,6 +38,7 @@ type Params struct {
 	Dao               lazy.Lazy[*dao.Query]
 	BlockingManager   lazy.Lazy[blocking.Manager]
 	DiscoveredNodes   concurrency.BatchingChannel[ktable.Node] `name:"dht_discovered_nodes"`
+	AnnouncedPeers    chan dht.AnnouncedPeer                   `name:"dht_announced_peers" optional:"true"`
 	Logger            *zap.SugaredLogger
 }
 
@@ -115,6 +117,7 @@ func New(params Params) Result {
 						getOldestNodesInterval:       time.Second * 10,
 						oldPeerThreshold:             time.Minute * 15,
 						discoveredNodes:              params.DiscoveredNodes,
+						announcedPeers:               params.AnnouncedPeers,
 						nodesForPing: concurrency.NewBufferedConcurrentChannel[ktable.Node](
 							scalingFactor, scalingFactor),
 						nodesForFindNode: concurrency.NewBufferedConcurrentChannel[ktable.Node](
@@ -166,6 +169,7 @@ func New(params Params) Result {
 
 					stageDepth.setProbes(map[string]func() int{
 						"discovered_nodes":  func() int { return len(c.discoveredNodes.In()) },
+						"announced_peers":   func() int { return len(c.announcedPeers) },
 						"ping":              func() int { return len(c.nodesForPing.In()) },
 						"find_node":         func() int { return len(c.nodesForFindNode.In()) },
 						"sample_infohashes": func() int { return len(c.nodesForSampleInfoHashes.In()) },

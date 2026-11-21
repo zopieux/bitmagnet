@@ -405,3 +405,188 @@ func TestResponder_unknown_method(t *testing.T) {
 	_, err := mocks.responder.Respond(context.Background(), msg)
 	assert.Equal(t, err, ErrMethodUnknown)
 }
+
+func TestResponderNodeDiscovery_AnnouncePeer(t *testing.T) {
+	t.Parallel()
+
+	t.Run("implied port and explicit ports", func(t *testing.T) {
+		t.Parallel()
+
+		mocks := newTestResponderMocks(t)
+		discovered := make(chan ktable.Node, 10)
+		announced := make(chan dht.AnnouncedPeer, 10)
+		nd := responderNodeDiscovery{
+			responder:       mocks.responder,
+			discoveredNodes: discovered,
+			announcedPeers:  announced,
+		}
+
+		from := mocks.sender.Addr.ToAddrPort()
+		h1 := protocol.RandomNodeID()
+		tok1 := mocks.responder.announceToken(h1, mocks.sender.ID, from.Addr())
+		mocks.table.On("BatchCommand", ktable.PutHash{
+			ID:    h1,
+			Peers: []ktable.HashPeer{{Addr: from}},
+		}).Return(nil).Once()
+
+		_, err := nd.Respond(context.Background(), dht.RecvMsg{
+			From: from,
+			Msg: dht.Msg{
+				Q: dht.QAnnouncePeer,
+				A: &dht.MsgArgs{
+					ID:          mocks.sender.ID,
+					InfoHash:    h1,
+					Token:       tok1,
+					ImpliedPort: true,
+				},
+			},
+		})
+		assert.NoError(t, err)
+		got1 := <-announced
+		assert.Equal(t, dht.AnnouncedPeer{InfoHash: h1, Node: from, Peer: from}, got1)
+
+		h2 := protocol.RandomNodeID()
+		tok2 := mocks.responder.announceToken(h2, mocks.sender.ID, from.Addr())
+		explicitPort := 51413
+		expectedPeer2 := netip.AddrPortFrom(from.Addr(), uint16(explicitPort))
+		mocks.table.On("BatchCommand", ktable.PutHash{
+			ID:    h2,
+			Peers: []ktable.HashPeer{{Addr: expectedPeer2}},
+		}).Return(nil).Once()
+
+		_, err = nd.Respond(context.Background(), dht.RecvMsg{
+			From: from,
+			Msg: dht.Msg{
+				Q: dht.QAnnouncePeer,
+				A: &dht.MsgArgs{
+					ID:       mocks.sender.ID,
+					InfoHash: h2,
+					Token:    tok2,
+					Port:     &explicitPort,
+				},
+			},
+		})
+		assert.NoError(t, err)
+		got2 := <-announced
+		assert.Equal(t, dht.AnnouncedPeer{InfoHash: h2, Node: from, Peer: expectedPeer2}, got2)
+
+		h3 := protocol.RandomNodeID()
+		tok3 := mocks.responder.announceToken(h3, mocks.sender.ID, from.Addr())
+		zeroPort := 0
+		mocks.table.On("BatchCommand", ktable.PutHash{
+			ID:    h3,
+			Peers: []ktable.HashPeer{{Addr: netip.AddrPortFrom(from.Addr(), 0)}},
+		}).Return(nil).Once()
+
+		_, err = nd.Respond(context.Background(), dht.RecvMsg{
+			From: from,
+			Msg: dht.Msg{
+				Q: dht.QAnnouncePeer,
+				A: &dht.MsgArgs{
+					ID:       mocks.sender.ID,
+					InfoHash: h3,
+					Token:    tok3,
+					Port:     &zeroPort,
+				},
+			},
+		})
+		assert.NoError(t, err)
+		got3 := <-announced
+		assert.Equal(t, h3, got3.InfoHash)
+		assert.Equal(t, from, got3.Node)
+		assert.False(t, got3.Peer.IsValid(), "port 0 should leave Peer invalid")
+	})
+
+	t.Run("ignores non-announce and error responses", func(t *testing.T) {
+		t.Parallel()
+
+		mocks := newTestResponderMocks(t)
+		discovered := make(chan ktable.Node, 10)
+		announced := make(chan dht.AnnouncedPeer, 10)
+		nd := responderNodeDiscovery{
+			responder:       mocks.responder,
+			discoveredNodes: discovered,
+			announcedPeers:  announced,
+		}
+
+		from := mocks.sender.Addr.ToAddrPort()
+		_, err := nd.Respond(context.Background(), dht.RecvMsg{
+			From: from,
+			Msg: dht.Msg{
+				Q: dht.QPing,
+				A: &dht.MsgArgs{ID: mocks.sender.ID},
+			},
+		})
+		assert.NoError(t, err)
+
+		_, err = nd.Respond(context.Background(), dht.RecvMsg{
+			From: from,
+			Msg: dht.Msg{
+				Q: dht.QAnnouncePeer,
+				A: &dht.MsgArgs{
+					ID:          mocks.sender.ID,
+					InfoHash:    protocol.RandomNodeID(),
+					Token:       "wrong-token",
+					ImpliedPort: true,
+				},
+			},
+		})
+		assert.ErrorIs(t, err, ErrInvalidToken)
+		assert.Empty(t, announced)
+	})
+
+	t.Run("non-blocking when full or nil", func(t *testing.T) {
+		t.Parallel()
+
+		mocks := newTestResponderMocks(t)
+		discovered := make(chan ktable.Node, 10)
+		announced := make(chan dht.AnnouncedPeer, 1)
+		announced <- dht.AnnouncedPeer{InfoHash: protocol.RandomNodeID()}
+
+		from := mocks.sender.Addr.ToAddrPort()
+		h := protocol.RandomNodeID()
+		tok := mocks.responder.announceToken(h, mocks.sender.ID, from.Addr())
+		mocks.table.On("BatchCommand", ktable.PutHash{
+			ID:    h,
+			Peers: []ktable.HashPeer{{Addr: from}},
+		}).Return(nil).Twice()
+
+		ndFull := responderNodeDiscovery{
+			responder:       mocks.responder,
+			discoveredNodes: discovered,
+			announcedPeers:  announced,
+		}
+		_, err := ndFull.Respond(context.Background(), dht.RecvMsg{
+			From: from,
+			Msg: dht.Msg{
+				Q: dht.QAnnouncePeer,
+				A: &dht.MsgArgs{
+					ID:          mocks.sender.ID,
+					InfoHash:    h,
+					Token:       tok,
+					ImpliedPort: true,
+				},
+			},
+		})
+		assert.NoError(t, err)
+		assert.Len(t, announced, 1)
+
+		ndNil := responderNodeDiscovery{
+			responder:       mocks.responder,
+			discoveredNodes: discovered,
+		}
+		_, err = ndNil.Respond(context.Background(), dht.RecvMsg{
+			From: from,
+			Msg: dht.Msg{
+				Q: dht.QAnnouncePeer,
+				A: &dht.MsgArgs{
+					ID:          mocks.sender.ID,
+					InfoHash:    h,
+					Token:       tok,
+					ImpliedPort: true,
+				},
+			},
+		})
+		assert.NoError(t, err)
+	})
+}

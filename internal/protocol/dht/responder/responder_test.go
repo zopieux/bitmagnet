@@ -590,3 +590,14 @@ func TestResponderNodeDiscovery_AnnouncePeer(t *testing.T) {
 		assert.NoError(t, err)
 	})
 }
+
+func TestNormalizeQuery(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, dht.QPing, normalizeQuery(dht.QPing))
+	assert.Equal(t, dht.QFindNode, normalizeQuery(dht.QFindNode))
+	assert.Equal(t, dht.QGetPeers, normalizeQuery(dht.QGetPeers))
+	assert.Equal(t, dht.QAnnouncePeer, normalizeQuery(dht.QAnnouncePeer))
+	assert.Equal(t, dht.QSampleInfohashes, normalizeQuery(dht.QSampleInfohashes))
+	assert.Equal(t, "unknown", normalizeQuery("other_method"))
+}

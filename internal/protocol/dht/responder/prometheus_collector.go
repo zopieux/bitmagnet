@@ -77,6 +77,8 @@ func normalizeQuery(q string) string {
 		return dht.QFindNode
 	case dht.QGetPeers:
 		return dht.QGetPeers
+	case dht.QAnnouncePeer:
+		return dht.QAnnouncePeer
 	case dht.QSampleInfohashes:
 		return dht.QSampleInfohashes
 	default:
